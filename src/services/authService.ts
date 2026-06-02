@@ -1,6 +1,5 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import Stripe from "stripe";
 import prisma from "../database/database.js";
 import { signToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt.js";
 import { slugify, normalizeEmail } from "../utils/slugify.js";
@@ -17,68 +16,12 @@ import {
   findUserByCpf
 } from "../repository/authRepository.js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-02-25.clover",
-});
-
 function isPrismaUniqueError(e: any) {
   return e?.code === "P2002";
 }
 
 function rounds() {
   return Number(process.env.BCRYPT_SALT_ROUNDS || 10);
-}
-
-function getFrontendAppBaseUrl() {
-  return (
-    process.env.FRONTEND_APP_URL ||
-    process.env.FRONTEND_URL ||
-    process.env.APP_WEB_URL ||
-    process.env.PUBLIC_WEB_URL ||
-    "http://localhost:5173"
-  ).replace(/\/+$/, "");
-}
-
-function getLandingPlanPriceId(selectedPlan?: "basic" | "premium") {
-  if (selectedPlan === "basic") {
-    return String(process.env.STRIPE_LANDING_BASIC_PRICE_ID || "").trim();
-  }
-
-  if (selectedPlan === "premium") {
-    return String(process.env.STRIPE_LANDING_PREMIUM_PRICE_ID || "").trim();
-  }
-
-  return "";
-}
-
-async function createLandingSubscriptionCheckoutUrl(params: {
-  selectedPlan?: "basic" | "premium";
-  userId: string;
-  userEmail?: string | null;
-  barbershopId: string;
-}) {
-  const priceId = getLandingPlanPriceId(params.selectedPlan);
-  if (!priceId) return null;
-
-  const frontendBase = getFrontendAppBaseUrl();
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    line_items: [{ price: priceId, quantity: 1 }],
-    customer_email: String(params.userEmail || "").trim() || undefined,
-    success_url: `${frontendBase}/admin?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${frontendBase}/admin?subscription=cancelled`,
-    allow_promotion_codes: true,
-    client_reference_id: params.userId,
-    metadata: {
-      flow: "landing_barbershop_register",
-      selectedPlan: String(params.selectedPlan || ""),
-      userId: params.userId,
-      barbershopId: params.barbershopId,
-    },
-  });
-
-  return session.url || null;
 }
 
 function generateTokenPair(payload: { userId: string; barbershopId: string | null; role: any; isAdmin: boolean }) {
@@ -376,16 +319,8 @@ export async function registerBarbershopService(params: {
       isAdmin: result.user.is_admin,
     });
 
-    const checkoutUrl = await createLandingSubscriptionCheckoutUrl({
-      selectedPlan: params.selectedPlan,
-      userId: result.user.id,
-      userEmail: result.user.email,
-      barbershopId: result.shop.id,
-    });
-
     return {
       ...tokens,
-      checkoutUrl,
       selectedPlan: params.selectedPlan ?? null,
       barbershop: mapAuthBarbershop(result.shop),
       user: {
