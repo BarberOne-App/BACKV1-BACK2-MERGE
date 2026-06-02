@@ -1,0 +1,728 @@
+import bcrypt from "bcrypt";
+import crypto from "crypto";
+import Stripe from "stripe";
+import prisma from "../database/database.js";
+import { signToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt.js";
+import { slugify, normalizeEmail } from "../utils/slugify.js";
+import { badRequest, conflict, forbidden, notFound, unauthorized } from "../errors/index.js";
+import {
+  createBarberProfile,
+  createBarbershop,
+  createUser,
+  findBarbershopBySlug,
+  listPublicBarbershops,
+  findUserByEmail,
+  findUserByEmailInBarbershop,
+  findUserById,
+  findUserByCpf
+} from "../repository/authRepository.js";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2026-02-25.clover",
+});
+
+function isPrismaUniqueError(e: any) {
+  return e?.code === "P2002";
+}
+
+function rounds() {
+  return Number(process.env.BCRYPT_SALT_ROUNDS || 10);
+}
+
+function getFrontendAppBaseUrl() {
+  return (
+    process.env.FRONTEND_APP_URL ||
+    process.env.FRONTEND_URL ||
+    process.env.APP_WEB_URL ||
+    process.env.PUBLIC_WEB_URL ||
+    "http://localhost:5173"
+  ).replace(/\/+$/, "");
+}
+
+function getLandingPlanPriceId(selectedPlan?: "basic" | "premium") {
+  if (selectedPlan === "basic") {
+    return String(process.env.STRIPE_LANDING_BASIC_PRICE_ID || "").trim();
+  }
+
+  if (selectedPlan === "premium") {
+    return String(process.env.STRIPE_LANDING_PREMIUM_PRICE_ID || "").trim();
+  }
+
+  return "";
+}
+
+async function createLandingSubscriptionCheckoutUrl(params: {
+  selectedPlan?: "basic" | "premium";
+  userId: string;
+  userEmail?: string | null;
+  barbershopId: string;
+}) {
+  const priceId = getLandingPlanPriceId(params.selectedPlan);
+  if (!priceId) return null;
+
+  const frontendBase = getFrontendAppBaseUrl();
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    line_items: [{ price: priceId, quantity: 1 }],
+    customer_email: String(params.userEmail || "").trim() || undefined,
+    success_url: `${frontendBase}/admin?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${frontendBase}/admin?subscription=cancelled`,
+    allow_promotion_codes: true,
+    client_reference_id: params.userId,
+    metadata: {
+      flow: "landing_barbershop_register",
+      selectedPlan: String(params.selectedPlan || ""),
+      userId: params.userId,
+      barbershopId: params.barbershopId,
+    },
+  });
+
+  return session.url || null;
+}
+
+function generateTokenPair(payload: { userId: string; barbershopId: string | null; role: any; isAdmin: boolean }) {
+  return {
+    token: signToken(payload),
+    refreshToken: signRefreshToken(payload),
+  };
+}
+
+function needsProfileCompletion(user: {
+  cpf?: string | null;
+  phone?: string | null;
+  birth_date?: Date | string | null;
+  password_hash?: string | null;
+  current_barbershop_id?: string | null;
+}) {
+  return !user.cpf || !user.phone || !user.birth_date || !user.password_hash || !user.current_barbershop_id;
+}
+
+function mapAuthUser(user: any) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    cpf: user.cpf ?? null,
+    birthDate: user.birth_date ?? null,
+    role: user.role,
+    isAdmin: user.is_admin,
+    permissions: user.permissions ?? null,
+    photoUrl: user.photo_url ?? null,
+    googleId: user.google_id ?? null,
+    authProvider: user.auth_provider ?? "local",
+    emailVerified: user.email_verified ?? false,
+  };
+}
+
+function mapAuthBarbershop(barbershop: any) {
+  if (!barbershop) return null;
+
+  return {
+    id: barbershop.id,
+    name: barbershop.name,
+    slug: barbershop.slug,
+    status: barbershop.status,
+    logoUrl: barbershop.logoUrl ?? barbershop.logo_url ?? "",
+  };
+}
+
+function buildAuthResponse(user: any, created = false) {
+  const barbershop = mapAuthBarbershop(user.current_barbershop);
+  const tokens = generateTokenPair({
+    userId: user.id,
+    barbershopId: barbershop?.id ?? null,
+    role: user.role as any,
+    isAdmin: user.is_admin,
+  });
+
+  return {
+    ...tokens,
+    created,
+    requiresProfileCompletion: needsProfileCompletion(user),
+    barbershop,
+    currentBarbershop: barbershop,
+    user: mapAuthUser(user),
+  };
+}
+
+async function getGoogleProfile(accessToken: string) {
+  if (!accessToken) throw badRequest("Token do Google nao informado");
+
+  const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!userInfoResponse.ok) {
+    throw unauthorized("Token do Google invalido ou expirado");
+  }
+
+  const userInfo = (await userInfoResponse.json()) as any;
+  const email = normalizeEmail(userInfo.email || "");
+  if (!email) throw unauthorized("Conta Google sem e-mail confirmado");
+
+  if (userInfo.email_verified !== true && userInfo.email_verified !== "true") {
+    throw unauthorized("E-mail da conta Google nao esta verificado");
+  }
+
+  return {
+    googleId: String(userInfo.sub || "").trim(),
+    email,
+    name: String(userInfo.name || email.split("@")[0]).trim(),
+    picture: userInfo.picture ? String(userInfo.picture) : null,
+  };
+}
+async function findGoogleAuthUser(email: string, googleId: string) {
+  return prisma.users.findFirst({
+    where: {
+      OR: [
+        { google_id: googleId },
+        { email },
+      ],
+    },
+    include: {
+      current_barbershop: { select: { id: true, name: true, slug: true, status: true, logo_url: true } },
+    },
+  });
+}
+
+export async function loginService(params: { email: string; password: string }) {
+  const email = normalizeEmail(params.email);
+
+  const user = await findUserByEmail(email);
+  if (!user) throw unauthorized("Credenciais inválidas");
+
+  const ok = await bcrypt.compare(params.password, user.password_hash);
+  if (!ok) throw unauthorized("Credenciais inválidas");
+
+  const shop = user.current_barbershop;
+  const isSuperAdmin = String(user.role) === "super_admin";
+
+  if (!shop && !isSuperAdmin) {
+    throw notFound("Usuário não vinculado a nenhuma barbearia");
+  }
+
+  return buildAuthResponse(user);
+}
+
+export async function googleAuthService(params: {
+  accessToken: string;
+  slug?: string | null;
+  profileData?: {
+    cpf?: string | null;
+    phone?: string | null;
+    birthDate?: string | Date | null;
+    password?: string | null;
+  };
+}) {
+  const googleProfile = await getGoogleProfile(params.accessToken);
+  if (!googleProfile.googleId) {
+    throw unauthorized("Token do Google sem identificador de usuÃ¡rio");
+  }
+
+  const slug = String(params.slug || "").trim();
+  const shop = slug ? await findBarbershopBySlug(slug) : null;
+  if (slug && !shop) throw notFound("Barbearia nÃ£o encontrada");
+
+  const profileData = params.profileData || {};
+  const cleanCpf = String(profileData.cpf || "").replace(/\D/g, "") || null;
+  const cleanPhone = String(profileData.phone || "").replace(/\D/g, "") || null;
+  const password = String(profileData.password || "").trim();
+
+  if (cleanCpf) {
+    const existingCpf = await findUserByCpf(cleanCpf);
+    if (existingCpf && existingCpf.email !== googleProfile.email) {
+      throw conflict("CPF jÃ¡ cadastrado");
+    }
+  }
+
+  const existingUser = await findGoogleAuthUser(googleProfile.email, googleProfile.googleId);
+  if (existingUser) {
+    const updateData: any = {
+      google_id: existingUser.google_id || googleProfile.googleId,
+      auth_provider: "google",
+      email_verified: true,
+      photo_url: existingUser.photo_url || googleProfile.picture,
+    };
+
+    if (cleanCpf && !existingUser.cpf) updateData.cpf = cleanCpf;
+    if (cleanPhone && !existingUser.phone) updateData.phone = cleanPhone;
+    if (profileData.birthDate && !existingUser.birth_date) updateData.birth_date = new Date(profileData.birthDate);
+    if (password) updateData.password_hash = await bcrypt.hash(password, rounds());
+
+    const linkShop = shop && !existingUser.current_barbershop_id;
+    if (linkShop) updateData.current_barbershop_id = shop.id;
+
+    const updated = await prisma.users.update({
+      where: { id: existingUser.id },
+      data: {
+        ...updateData,
+        ...(shop
+          ? {
+            barbershop_links: {
+              connectOrCreate: {
+                where: {
+                  user_id_barbershop_id: {
+                    user_id: existingUser.id,
+                    barbershop_id: shop.id,
+                  },
+                },
+                create: { barbershop_id: shop.id },
+              },
+            },
+          }
+          : {}),
+      },
+      include: {
+        current_barbershop: { select: { id: true, name: true, slug: true, status: true, logo_url: true } },
+      },
+    });
+
+    return buildAuthResponse(updated);
+  }
+
+  const passwordHash = password
+    ? await bcrypt.hash(password, rounds())
+    : await bcrypt.hash(crypto.randomUUID(), rounds());
+
+  const created = await prisma.users.create({
+    data: {
+      name: googleProfile.name,
+      email: googleProfile.email,
+      phone: cleanPhone,
+      cpf: cleanCpf,
+      birth_date: profileData.birthDate ? new Date(profileData.birthDate) : null,
+      role: "client",
+      is_admin: false,
+      password_hash: passwordHash,
+      google_id: googleProfile.googleId,
+      auth_provider: "google",
+      email_verified: true,
+      photo_url: googleProfile.picture,
+      current_barbershop_id: shop?.id ?? null,
+      ...(shop
+        ? {
+          barbershop_links: {
+            create: { barbershop_id: shop.id },
+          },
+        }
+        : {}),
+    },
+    include: {
+      current_barbershop: { select: { id: true, name: true, slug: true, status: true, logo_url: true } },
+    },
+  });
+
+  return buildAuthResponse(created, true);
+}
+
+export async function registerBarbershopService(params: {
+  barbershopName: string;
+  slug?: string;
+  cnpj?: string;
+  phone?: string;
+
+  adminName: string;
+  adminEmail: string;
+  adminPhone?: string;
+  password: string;
+  selectedPlan: "basic" | "premium";
+}) {
+  const adminEmail = normalizeEmail(params.adminEmail);
+  const slug = slugify(params.slug?.trim() || params.barbershopName);
+
+  const passwordHash = await bcrypt.hash(params.password, rounds());
+
+  console.log("Plano selecionado:", params.selectedPlan);
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const shop = await createBarbershop(
+        {
+          name: params.barbershopName.trim(),
+          slug,
+          cnpj: params.cnpj ?? null,
+          phone: params.phone ?? null,
+          email: adminEmail,
+          selectedPlan: params.selectedPlan,
+        },
+        tx
+      );
+
+      const existing = await findUserByEmailInBarbershop(shop.id, adminEmail, tx);
+      if (existing) throw conflict("E-mail já cadastrado nessa barbearia");
+
+      const user = await createUser(
+        {
+          barbershopId: shop.id,
+          name: params.adminName.trim(),
+          email: adminEmail,
+          phone: params.adminPhone ?? params.phone ?? null,
+          role: "admin",
+          isAdmin: true,
+          passwordHash,
+        },
+        tx
+      );
+
+      return { shop, user };
+    });
+
+    const tokens = generateTokenPair({
+      userId: result.user.id,
+      barbershopId: result.shop.id,
+      role: result.user.role as any,
+      isAdmin: result.user.is_admin,
+    });
+
+    const checkoutUrl = await createLandingSubscriptionCheckoutUrl({
+      selectedPlan: params.selectedPlan,
+      userId: result.user.id,
+      userEmail: result.user.email,
+      barbershopId: result.shop.id,
+    });
+
+    return {
+      ...tokens,
+      checkoutUrl,
+      selectedPlan: params.selectedPlan ?? null,
+      barbershop: mapAuthBarbershop(result.shop),
+      user: {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+        phone: result.user.phone,
+        role: result.user.role,
+        isAdmin: result.user.is_admin,
+      },
+    };
+  } catch (e: any) {
+    if (isPrismaUniqueError(e)) throw conflict("Slug/CNPJ já cadastrado");
+    throw e;
+  }
+}
+
+export async function registerClientService(params: {
+  slug: string;
+  name: string;
+  email: string;
+  cpf?: string;
+  phone?: string;
+  birthDate?: string | Date;
+  password: string;
+}) {
+  const slug = params.slug.trim();
+  const email = normalizeEmail(params.email);
+
+  const shop = await findBarbershopBySlug(slug);
+  if (!shop) throw notFound("Barbearia não encontrada");
+
+  const existing = await findUserByEmailInBarbershop(shop.id, email);
+  if (existing) throw conflict("E-mail já cadastrado nessa barbearia");
+
+  const existingCpf = params.cpf ? await findUserByCpf(params.cpf) : null;
+  if (existingCpf) throw conflict("CPF já cadastrado");
+
+  const passwordHash = await bcrypt.hash(params.password, rounds());
+
+  const user = await createUser({
+    barbershopId: shop.id,
+    name: params.name.trim(),
+    email,
+    cpf: params.cpf ?? null,
+    phone: params.phone ?? null,
+    birthDate: params.birthDate ?? null,
+    role: "client",
+    isAdmin: false,
+    passwordHash,
+  });
+
+  const tokens = generateTokenPair({
+    userId: user.id,
+    barbershopId: shop.id,
+    role: user.role as any,
+    isAdmin: user.is_admin,
+  });
+
+  return {
+    ...tokens,
+    barbershop: mapAuthBarbershop(shop),
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      isAdmin: user.is_admin,
+    },
+  };
+}
+
+export async function listPublicBarbershopsService() {
+  const shops = await listPublicBarbershops();
+  return shops.map(mapAuthBarbershop);
+}
+
+export async function registerBarberService(params: {
+  barbershopId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  password: string;
+  displayName?: string;
+  specialty?: string;
+  photoUrl?: string;
+  commissionPercent?: number;
+}) {
+  const email = normalizeEmail(params.email);
+
+  const existing = await findUserByEmailInBarbershop(params.barbershopId, email);
+  if (existing) throw conflict("E-mail já cadastrado nessa barbearia");
+
+  const passwordHash = await bcrypt.hash(params.password, rounds());
+
+  const result = await prisma.$transaction(async (tx) => {
+    const user = await createUser(
+      {
+        barbershopId: params.barbershopId,
+        name: params.name.trim(),
+        email,
+        phone: params.phone ?? null,
+        role: "barber",
+        isAdmin: false,
+        passwordHash,
+      },
+      tx
+    );
+
+    const barber = await createBarberProfile(
+      {
+        barbershopId: params.barbershopId,
+        userId: user.id,
+        displayName: (params.displayName?.trim() || params.name).trim(),
+        specialty: params.specialty ?? null,
+        photoUrl: params.photoUrl ?? null,
+        commissionPercent: params.commissionPercent ?? null,
+      },
+      tx
+    );
+
+    return { user, barber };
+  });
+
+  return {
+    user: {
+      id: result.user.id,
+      name: result.user.name,
+      email: result.user.email,
+      phone: result.user.phone,
+      role: result.user.role,
+      isAdmin: result.user.is_admin,
+    },
+    barber: {
+      id: result.barber.id,
+      displayName: result.barber.display_name,
+      specialty: result.barber.specialty,
+      photoUrl: result.barber.photo_url,
+      commissionPercent: result.barber.commission_percent,
+    },
+  };
+}
+
+export async function registerSuperAdminService(params: {
+  setupKey: string;
+  name: string;
+  email: string;
+  password: string;
+}) {
+  const expectedSetupKey = String(process.env.SUPER_ADMIN_SETUP_KEY || "").trim();
+  if (!expectedSetupKey) {
+    throw forbidden("Cadastro de super admin desabilitado no servidor");
+  }
+
+  if (params.setupKey.trim() !== expectedSetupKey) {
+    throw forbidden("Chave de setup inválida");
+  }
+
+  const email = normalizeEmail(params.email);
+  const existing = await findUserByEmail(email);
+  if (existing) throw conflict("E-mail já cadastrado");
+
+  const passwordHash = await bcrypt.hash(params.password, rounds());
+
+  const user = await prisma.users.create({
+    data: {
+      name: params.name.trim(),
+      email,
+      role: "super_admin",
+      is_admin: true,
+      password_hash: passwordHash,
+      current_barbershop_id: null,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+      is_admin: true,
+    },
+  });
+
+  const token = signToken({
+    userId: user.id,
+    barbershopId: null,
+    role: user.role as any,
+    isAdmin: user.is_admin,
+  });
+
+  return {
+    token,
+    barbershop: null,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      isAdmin: user.is_admin,
+    },
+  };
+}
+
+/* ─────────────── GET /auth/me ─────────────── */
+export async function meService(userId: string) {
+  const user = await findUserById(userId);
+  if (!user) throw notFound("Usuário não encontrado");
+
+  const activeSubscription = user.subscriptions[0] ?? null;
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    cpf: user.cpf,
+    role: user.role,
+    isAdmin: user.is_admin,
+    permissions: user.permissions,
+    photoUrl: user.photo_url,
+    createdAt: user.created_at,
+    updatedAt: user.updated_at,
+    barbershop: mapAuthBarbershop(user.current_barbershop),
+    barberProfile: user.barbers ?? null,
+    subscription: activeSubscription
+      ? {
+        id: activeSubscription.id,
+        status: activeSubscription.status,
+        startedAt: activeSubscription.started_at,
+        nextBillingAt: activeSubscription.next_billing_at,
+        monthlyBarberId: activeSubscription.monthly_barber_id,
+        plan: activeSubscription.subscription_plans,
+      }
+      : null,
+  };
+}
+
+/* ─────────────── POST /auth/refresh ─────────────── */
+export async function refreshTokenService(refreshToken: string) {
+  let payload: ReturnType<typeof verifyRefreshToken>;
+  try {
+    payload = verifyRefreshToken(refreshToken);
+  } catch {
+    throw unauthorized("Refresh token inválido ou expirado");
+  }
+
+  // garante que o user ainda existe
+  const user = await findUserById(payload.userId);
+  if (!user) throw unauthorized("Usuário não encontrado");
+
+  const isSuperAdmin = String(user.role) === "super_admin";
+  if (!isSuperAdmin && !user.current_barbershop_id) {
+    throw unauthorized("Usuário sem barbearia ativa");
+  }
+
+  const tokenPayload = {
+    userId: user.id,
+    barbershopId: user.current_barbershop_id ?? null,
+    role: user.role as "admin" | "barber" | "client" | "receptionist" | "super_admin",
+    isAdmin: user.is_admin,
+  };
+
+  return generateTokenPair(tokenPayload);
+}
+
+export async function switchBarbershopService(params: {
+  userId: string;
+  barbershopId: string;
+}) {
+  const targetBarbershopId = String(params.barbershopId || "").trim();
+  if (!targetBarbershopId) {
+    throw forbidden("Barbearia inválida");
+  }
+
+  const user = await findUserById(params.userId);
+  if (!user) {
+    throw notFound("Usuário não encontrado");
+  }
+
+  const isSuperAdmin = String(user.role) === "super_admin";
+  if (!isSuperAdmin) {
+    const hasAccess = await prisma.users.findFirst({
+      where: {
+        id: params.userId,
+        barbershop_links: {
+          some: {
+            barbershop_id: targetBarbershopId,
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!hasAccess) {
+      throw forbidden("Usuário sem acesso a esta barbearia");
+    }
+  }
+
+  await prisma.users.update({
+    where: { id: params.userId },
+    data: { current_barbershop_id: targetBarbershopId },
+  });
+
+  const updatedUser = await findUserById(params.userId);
+  if (!updatedUser) {
+    throw notFound("Usuário não encontrado");
+  }
+
+  const token = signToken({
+    userId: updatedUser.id,
+    barbershopId: targetBarbershopId,
+    role: updatedUser.role as any,
+    isAdmin: updatedUser.is_admin,
+  });
+
+  const refreshToken = signRefreshToken({
+    userId: updatedUser.id,
+    barbershopId: targetBarbershopId,
+    role: updatedUser.role as any,
+    isAdmin: updatedUser.is_admin,
+  });
+
+  return {
+    token,
+    refreshToken,
+    barbershop: mapAuthBarbershop(updatedUser.current_barbershop),
+    user: {
+      id: updatedUser.id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      phone: updatedUser.phone,
+      role: updatedUser.role,
+      isAdmin: updatedUser.is_admin,
+      permissions: updatedUser.permissions,
+      photoUrl: updatedUser.photo_url,
+    },
+  };
+}

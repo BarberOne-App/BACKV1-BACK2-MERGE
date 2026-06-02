@@ -1,0 +1,5 @@
+ALTER TABLE "barbershop_home_info"
+ADD COLUMN IF NOT EXISTS "hero_title" TEXT,
+ADD COLUMN IF NOT EXISTS "hero_subtitle" TEXT,
+ADD COLUMN IF NOT EXISTS "hero_image" TEXT,
+ADD COLUMN IF NOT EXISTS "hero_images" TEXT[] DEFAULT ARRAY[]::TEXT[];

@@ -1,0 +1,22 @@
+{
+  "type": "online",
+  "processing_mode": "automatic",
+  "total_amount": "100.00",
+  "external_reference": "test-order-001",
+  "payer": {
+    "email": "test_user_5733565823738609808@testuser.com"
+  },
+  "transactions": {
+    "payments": [
+      {
+        "amount": "100.00",
+        "payment_method": {
+          "id": "master",
+          "type": "credit_card",
+          "token": "a1639cb3f401f53a09779ca57606aa98",
+          "installments": 1
+        }
+      }
+    ]
+  }
+}
