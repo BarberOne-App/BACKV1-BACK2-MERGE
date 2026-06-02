@@ -52,7 +52,7 @@ export async function createPlatformPlanInDB(data: {
   active?: boolean;
   features?: string[];
 }) {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: any) => {
     const plan = await tx.platform_plans.create({
       data: {
         name: data.name,
@@ -112,7 +112,7 @@ export async function updatePlatformPlanInDB(
   const existing = await prisma.platform_plans.findUnique({ where: { id } });
   if (!existing) return null;
 
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: any) => {
     const updateData: any = { updated_at: new Date() };
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
@@ -155,7 +155,7 @@ export async function deletePlatformPlanFromDB(id: string) {
   const existing = await prisma.platform_plans.findUnique({ where: { id } });
   if (!existing) return null;
 
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: any) => {
     // Desvincula assinaturas que referenciam este plano antes de deletar
     await tx.barbershop_platform_subscriptions.updateMany({
       where: { platform_plan_id: id },

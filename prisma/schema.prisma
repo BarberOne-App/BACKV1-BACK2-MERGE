@@ -320,6 +320,7 @@ model barbershop_platform_subscriptions {
   id                      String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   barbershop_id           String      @unique @db.Uuid
   selected_plan           String
+  platform_plan_id        String?     @db.Uuid
   pagarme_subscription_id  String?     @unique
   pagarme_plan_id         String?
   pagarme_customer_id     String?
@@ -332,10 +333,48 @@ model barbershop_platform_subscriptions {
   created_at              DateTime    @default(now()) @db.Timestamptz(6)
   updated_at              DateTime    @default(now()) @db.Timestamptz(6)
 
-  barbershops             barbershops @relation(fields: [barbershop_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_platform_subscription_barbershop")
+  barbershops             barbershops    @relation(fields: [barbershop_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_platform_subscription_barbershop")
+  platform_plan           platform_plans? @relation(fields: [platform_plan_id], references: [id], onUpdate: NoAction, map: "fk_platform_subscription_plan")
 
   @@index([status], map: "idx_platform_subscriptions_status")
   @@index([pagarme_subscription_id], map: "idx_platform_subscriptions_pagarme_id")
+  @@index([platform_plan_id], map: "idx_platform_subscriptions_plan_id")
+}
+
+model platform_plans {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  description       String?
+  price             Decimal  @db.Decimal(12, 2)
+  interval          String   @default("month")
+  interval_count    Int      @default(1)
+  trial_period_days Int      @default(0)
+  pagarme_plan_id   String?
+  max_barbers       Int?
+  max_admins        Int?
+  max_receptionists Int?
+  is_public         Boolean  @default(false)
+  is_recommended    Boolean  @default(false)
+  sort_order        Int      @default(0)
+  active            Boolean  @default(true)
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime @default(now()) @db.Timestamptz(6)
+
+  features      platform_plan_features[]
+  subscriptions barbershop_platform_subscriptions[]
+
+  @@index([active, is_public], map: "idx_platform_plans_active_public")
+  @@index([sort_order], map: "idx_platform_plans_sort_order")
+}
+
+model platform_plan_features {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  plan_id    String         @db.Uuid
+  feature    String
+  sort_order Int            @default(0)
+  plan       platform_plans @relation(fields: [plan_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_platform_plan_features_plan")
+
+  @@index([plan_id], map: "idx_platform_plan_features_plan")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
