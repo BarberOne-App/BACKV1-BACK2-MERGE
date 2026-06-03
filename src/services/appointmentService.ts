@@ -13,6 +13,7 @@ import {
   findBarberByIdInBarbershop,
   findBarberByUserIdInBarbershop,
 } from "../repository/barberRepository.js";
+import { findBlockedDateByDate } from "../repository/blockedDateRepository.js";
 import { getHomeInfoByBarbershop } from "../repository/settingRepository.js";
 import { findActiveSubscriptionByUser } from "../repository/subscriptionRepository.js";
 import {
@@ -598,6 +599,22 @@ export async function createAppointmentService(params: {
 
   if (!barber) throw notFound("Barbeiro não encontrado");
 
+  /* ── Valida datas bloqueadas (dia inteiro) ── */
+  const blockedEntries = await findBlockedDateByDate(params.barbershopId, date, barberId);
+
+  for (const block of blockedEntries) {
+    const affectsBarber = !block.barber_id || block.barber_id === barberId;
+    if (!affectsBarber) continue;
+
+    if (!block.start_time || !block.end_time) {
+      throw badRequest(
+        block.barber_id
+          ? "O barbeiro está indisponível neste dia"
+          : "A barbearia está fechada neste dia"
+      );
+    }
+  }
+
   const normalizedServices = await getNormalizedAppointmentServices({
     barbershopId: params.barbershopId,
     services,
@@ -613,6 +630,28 @@ export async function createAppointmentService(params: {
   }
 
   const blockedDuration = roundUpToScheduleBlock(totalDuration);
+
+  /* ── Valida datas bloqueadas (horário parcial) ── */
+  const apptStartMin = parseTimeToMinutes(time);
+  if (apptStartMin !== null) {
+    const apptEndMin = apptStartMin + blockedDuration;
+    for (const block of blockedEntries) {
+      const affectsBarber = !block.barber_id || block.barber_id === barberId;
+      if (!affectsBarber || !block.start_time || !block.end_time) continue;
+
+      const blockStartMin = parseTimeToMinutes(block.start_time);
+      const blockEndMin = parseTimeToMinutes(block.end_time);
+      if (blockStartMin === null || blockEndMin === null) continue;
+
+      if (apptStartMin < blockEndMin && apptEndMin > blockStartMin) {
+        throw badRequest(
+          block.barber_id
+            ? `O barbeiro está bloqueado das ${block.start_time} às ${block.end_time}`
+            : `A barbearia está bloqueada das ${block.start_time} às ${block.end_time}`
+        );
+      }
+    }
+  }
 
   const startAt = buildSaoPauloDateTime(date, time);
 
@@ -1013,6 +1052,20 @@ export async function getAvailableSlotsService(params: {
 
   const blockedDuration = roundUpToScheduleBlock(duration);
 
+  /* ── Verifica datas bloqueadas ── */
+  const blockedSlotEntries = await findBlockedDateByDate(
+    params.barbershopId,
+    params.date,
+    params.barberId,
+  );
+
+  for (const block of blockedSlotEntries) {
+    const affectsBarber = !block.barber_id || block.barber_id === params.barberId;
+    if (!affectsBarber) continue;
+    // Bloqueio dia inteiro → nenhum slot disponível
+    if (!block.start_time || !block.end_time) return [];
+  }
+
   const appointments = await getBarberAppointmentsForDate(
     params.barbershopId,
     params.barberId,
@@ -1028,6 +1081,17 @@ export async function getAvailableSlotsService(params: {
       end: end.hour * 60 + end.minute,
     };
   });
+
+  // Adiciona bloqueios parciais à lista de ocupados
+  for (const block of blockedSlotEntries) {
+    const affectsBarber = !block.barber_id || block.barber_id === params.barberId;
+    if (!affectsBarber || !block.start_time || !block.end_time) continue;
+    const blockStart = parseTimeToMinutes(block.start_time);
+    const blockEnd = parseTimeToMinutes(block.end_time);
+    if (blockStart !== null && blockEnd !== null) {
+      busy.push({ start: blockStart, end: blockEnd });
+    }
+  }
 
   const openingWindow = await getOpeningWindowFromHomeInfo(
     params.barbershopId,
