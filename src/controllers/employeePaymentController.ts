@@ -7,6 +7,7 @@ import {
   createEmployeePaymentService,
   createExtraEmployeePaymentService,
   getEmployeePayrollSummaryService,
+  getMyPayrollSummaryService,
   listEmployeePaymentsService,
   listExtraEmployeePaymentsService,
 } from "../services/employeePaymentService.js";
@@ -56,6 +57,31 @@ export async function createEmployeePayment(req: Request, res: Response) {
 
     return res.status(err.status || 500).send({
       message: err.message || "Erro interno ao criar pagamento",
+    });
+  }
+}
+
+/* ───── MY SUMMARY (own barber data, no admin required) ───── */
+
+export async function getMyPayrollSummary(req: Request, res: Response) {
+  try {
+    const { periodStart, periodEnd } = req.query as Record<string, string>;
+
+    if (!periodStart || !periodEnd) {
+      return res.status(422).send({ message: "periodStart e periodEnd são obrigatórios" });
+    }
+
+    const result = await getMyPayrollSummaryService({
+      barbershopId: req.user!.barbershopId,
+      userId: req.user!.id,
+      periodStart,
+      periodEnd,
+    });
+
+    return res.status(200).send(result);
+  } catch (err: any) {
+    return res.status(err.status || 500).send({
+      message: err.message || "Erro interno ao carregar resumo de ganhos",
     });
   }
 }
