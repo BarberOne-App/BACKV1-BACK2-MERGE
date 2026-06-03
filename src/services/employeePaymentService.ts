@@ -266,6 +266,23 @@ export async function createExtraEmployeePaymentService(params: {
   return serialize(created);
 }
 
+/* ── MY SUMMARY (barber sees their own data without admin check) ── */
+export async function getMyPayrollSummaryService(params: {
+  barbershopId: string;
+  userId: string;
+  periodStart: string;
+  periodEnd: string;
+}) {
+  return getEmployeePayrollSummaryService({
+    barbershopId: params.barbershopId,
+    actorRole: "admin",
+    isAdmin: true,
+    periodStart: params.periodStart,
+    periodEnd: params.periodEnd,
+    employeeId: params.userId,
+  });
+}
+
 export async function syncEmployeeCommissionFromAppointmentPayment(_params: {
   barbershopId: string;
   appointmentId: string;

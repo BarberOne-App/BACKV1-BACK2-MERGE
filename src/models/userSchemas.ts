@@ -7,6 +7,7 @@ const uuidParam = joi.object({
 const permissionsObject = joi.object({
   viewAdmin: joi.boolean().optional(),
   manageEmployees: joi.boolean().optional(),
+  manageCustomers: joi.boolean().optional(),
   manageProducts: joi.boolean().optional(),
   addProducts: joi.boolean().optional(),
   editProducts: joi.boolean().optional(),

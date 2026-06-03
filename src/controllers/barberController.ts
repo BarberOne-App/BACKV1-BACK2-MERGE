@@ -10,6 +10,7 @@ import {
   createBarberService,
   deleteBarberService,
   getBarberByIdService,
+  getMyBarberService,
   linkBarberToUserService,
   listBarbersService,
   updateBarberService,
@@ -89,6 +90,15 @@ export async function linkUser(req: Request, res: Response) {
     actorRole: req.user!.role,
     barberId: req.params.id,
     userId: b.value.userId,
+  });
+
+  return res.status(200).send(result);
+}
+
+export async function getMyBarber(req: Request, res: Response) {
+  const result = await getMyBarberService({
+    barbershopId: req.user!.barbershopId,
+    userId: req.user!.id,
   });
 
   return res.status(200).send(result);

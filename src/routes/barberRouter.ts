@@ -5,6 +5,7 @@ import {
   createBarber,
   deleteBarber,
   getBarberById,
+  getMyBarber,
   linkUser,
   listBarbers,
   updateBarber,
@@ -14,6 +15,8 @@ const router = Router();
 
 // Listar / buscar — qualquer usuário logado (usado na Home e agendamento)
 router.get("/barbers", requireAuth, asyncHandler(listBarbers));
+// Perfil do barbeiro logado — deve vir ANTES de /:id para não colidir
+router.get("/barbers/me", requireAuth, asyncHandler(getMyBarber));
 router.get("/barbers/:id", requireAuth, asyncHandler(getBarberById));
 
 // Criar / editar / vincular / remover — admin only

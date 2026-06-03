@@ -232,6 +232,7 @@ import {
   createBarberInBarbershop,
   deleteBarberFromBarbershop,
   findBarberByIdInBarbershop,
+  findBarberByUserIdInBarbershop,
   linkBarberToUser,
   listBarbersInBarbershop,
   replaceBarberServices,
@@ -449,4 +450,14 @@ export async function deleteBarberService(params: {
   if (!deleted) throw notFound("Barbeiro não encontrado");
 
   return { ok: true };
+}
+
+/* ── GET MY BARBER (by logged-in userId) ── */
+export async function getMyBarberService(params: {
+  barbershopId: string;
+  userId: string;
+}) {
+  const barber = await findBarberByUserIdInBarbershop(params.barbershopId, params.userId);
+  if (!barber) throw notFound("Perfil de barbeiro não encontrado para este usuário");
+  return serializeBarber(barber);
 }

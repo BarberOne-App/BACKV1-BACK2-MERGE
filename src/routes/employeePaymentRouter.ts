@@ -5,11 +5,15 @@ import {
   createEmployeePayment,
   createExtraEmployeePayment,
   getEmployeePayrollSummary,
+  getMyPayrollSummary,
   listEmployeePayments,
   listExtraEmployeePayments,
 } from "../controllers/employeePaymentController.js";
 
 const router = Router();
+
+// Rota do próprio barbeiro — deve vir ANTES das rotas admin para não colidir
+router.get("/employeePayments/my-summary", requireAuth, asyncHandler(getMyPayrollSummary));
 
 router.get("/employeePayments/summary", requireAuth, requireAdmin, asyncHandler(getEmployeePayrollSummary));
 router.get("/employeePayments/extra", requireAuth, requireAdmin, asyncHandler(listExtraEmployeePayments));
