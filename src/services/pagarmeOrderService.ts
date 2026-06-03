@@ -170,9 +170,22 @@ function normalizePaymentMethod(method: any) {
 }
 
 export function normalizePagarmeOrder(order: PagarmeOrder): NormalizedOrder {
-    const charge = order?.charges?.[0] || {};
-    const lastTransaction = charge?.last_transaction || {};
-    const card = lastTransaction?.card || charge?.card || {};
+    const charge: Charge = order?.charges?.[0] ?? {};
+    const lastTx: Transaction = charge?.last_transaction ?? {};
+    const card: Card = lastTx?.card ?? charge?.card ?? {};
+
+    // Pagar.me: QR code em charges[0].last_transaction.qr_code (copia-e-cola)
+    // e imagem em charges[0].last_transaction.qr_code_url
+    const pixQrCode = lastTx?.qr_code ?? '';
+    const pixQrCodeUrl = lastTx?.qr_code_url ?? lastTx?.qr_code_url_png ?? '';
+
+    console.log('[normalizePagarmeOrder]', {
+        orderId: order?.id,
+        orderStatus: order?.status,
+        chargeStatus: charge?.status,
+        hasPixQrCode: Boolean(pixQrCode),
+        hasPixQrCodeUrl: Boolean(pixQrCodeUrl),
+    });
 
     return {
         orderId: order?.id,
@@ -180,26 +193,30 @@ export function normalizePagarmeOrder(order: PagarmeOrder): NormalizedOrder {
         status: order?.status,
         chargeId: charge?.id,
         chargeStatus: charge?.status,
-        amount: Number(order?.amount || charge?.amount || 0) / 100,
+        amount: Number(order?.amount ?? charge?.amount ?? 0) / 100,
         paymentMethod: charge?.payment_method,
-        pixQrCode: lastTransaction?.qr_code || '',
-        pixQrCodeUrl: lastTransaction?.qr_code_url || lastTransaction?.qr_code_url_png || '',
-        cardBrand: card?.brand || '',
-        cardLastDigits: card?.last_four_digits || card?.last_digits || '',
+        pixQrCode,
+        pixQrCodeUrl,
+        cardBrand: card?.brand ?? '',
+        cardLastDigits: card?.last_four_digits ?? card?.last_digits ?? '',
         raw: order,
     };
 }
 
+function orderFailed(order: any): boolean {
+    return order?.status === 'failed';
+}
+
 export async function createPagarmeOrderService(params: any) {
     console.log("createPagarmeOrderService called with params:", params);
-    const amountInCents = toCents(params.amount);
 
+    const amountInCents = toCents(params.amount);
     if (!amountInCents || amountInCents <= 0) {
         throw new Error('Valor do pagamento inválido.');
     }
 
+    // Split é opcional — só aplica se a barbearia tiver recipient_id cadastrado
     const barbershopId = params?.metadata?.barbershopId;
-
     let barbershopRecipientId: string | null = null;
 
     if (barbershopId) {
@@ -210,19 +227,31 @@ export async function createPagarmeOrderService(params: any) {
         barbershopRecipientId = shop?.pagarme_recipient_id || null;
     }
 
-    if (!barbershopRecipientId) {
-        throw new Error('A barbearia ainda não possui pagarme_recipient_id cadastrado.');
+    // Busca CPF e telefone reais do usuário no banco
+    const userId = params?.metadata?.userId || params?.customer?.id;
+    let dbPhone: string | null = null;
+    let dbCpf: string | null = null;
+
+    if (userId) {
+        const dbUser = await prisma.users.findUnique({
+            where: { id: String(userId) },
+            select: { phone: true, cpf: true },
+        });
+        dbPhone = dbUser?.phone || null;
+        dbCpf = dbUser?.cpf || null;
     }
 
-    const platformFeeAmountInCents = getPlatformFeeAmount(amountInCents, params.platformFeeAmount);
+    // customer — obrigatório para PIX conforme documentação Pagar.me
+    const resolvedPhone = params?.customer?.phone || dbPhone;
+    const resolvedDocument = params?.customer?.document || dbCpf;
 
-    const customerPhone = extractPhone(params?.customer?.phone);
-    const customerDocument = onlyNumbers(params?.customer?.document);
+    const customerPhone = extractPhone(resolvedPhone);
+    const customerDocument = onlyNumbers(resolvedDocument);
 
     const customer = {
-        name: params?.customer?.name || 'Cliente',
-        email: params?.customer?.email,
-        type: 'individual',
+        name: String(params?.customer?.name || 'Cliente').trim(),
+        email: String(params?.customer?.email || '').trim() || undefined,
+        type: 'individual' as const,
         document: customerDocument || '00000000000',
         phones: customerPhone
             ? { mobile_phone: customerPhone }
@@ -230,74 +259,91 @@ export async function createPagarmeOrderService(params: any) {
     };
 
     const itemName = params?.item?.name || 'Agendamento';
-    const orderCode = `barberone_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+    const itemCode = String(params?.item?.id || '1').slice(0, 52); // Pagar.me limita o code
+    const orderCode = `bo_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
     const paymentMethod = normalizePaymentMethod(params.paymentMethod);
 
-    const payment: any = {
-        payment_method: paymentMethod,
-        split: buildSplit({
-            amountInCents,
-            barbershopRecipientId,
-            platformFeeAmountInCents,
-        }),
-    };
+    const payment: any = { payment_method: paymentMethod };
 
-    if (payment.payment_method === 'pix') {
+    // Inclui split somente quando recipient_id estiver cadastrado
+    if (barbershopRecipientId) {
+        const platformFeeAmountInCents = getPlatformFeeAmount(amountInCents, params.platformFeeAmount);
+        payment.split = buildSplit({ amountInCents, barbershopRecipientId, platformFeeAmountInCents });
+    }
+
+    if (paymentMethod === 'pix') {
         payment.pix = {
             expires_in: Number(process.env.PAGARME_PIX_EXPIRES_IN || 3600),
         };
     } else {
+        // cartão
         if (!params.cardToken) {
             throw new Error('cardToken é obrigatório para pagamento com cartão.');
         }
 
-        const billingAddress = {
-            line_1: '123, Rua Teste, Centro',
-            line_2: 'Casa',
-            zip_code: '01001000',
-            city: 'Sao Paulo',
-            state: 'SP',
-            country: 'BR',
-        };
-
         payment.credit_card = {
             operation_type: 'auth_and_capture',
-            installments: 1,
+            installments: Number(params.installments || 1),
             statement_descriptor: 'BarberOne',
             card_token: params.cardToken,
             card: {
-                billing_address: billingAddress,
+                billing_address: {
+                    line_1: '123, Rua Teste, Centro',
+                    zip_code: '01001000',
+                    city: 'Sao Paulo',
+                    state: 'SP',
+                    country: 'BR',
+                },
             },
         };
     }
 
-    const payload = {
+    const payload: any = {
         code: orderCode,
-        closed: true,
         customer,
         items: [
             {
                 amount: amountInCents,
                 description: itemName,
                 quantity: 1,
-                code: '1234',
+                code: itemCode,
             },
         ],
         payments: [payment],
-        metadata: params.metadata || {},
     };
+
+    if (params.metadata && Object.keys(params.metadata).length > 0) {
+        payload.metadata = params.metadata;
+    }
+
+    console.log('Pagar.me order payload:', JSON.stringify(payload, null, 2));
 
     const order = await pagarmeRequest('/orders', {
         method: 'POST',
-        headers: {
-            'Idempotency-Key': crypto.randomUUID(),
-        },
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify(payload),
     });
 
-    console.log('Pagarme order created:', order);
-    return order;
+    console.log('Pagar.me order response:', JSON.stringify(order, null, 2));
+
+    // Se o order falhou e havia split, retentar sem split (recipient inválido, sandbox, etc.)
+    if (orderFailed(order) && payment.split) {
+        console.warn('[Pagar.me] Order falhou com split — retentando sem split...', {
+            gatewayErrors: order?.charges?.[0]?.last_transaction?.gateway_response?.errors,
+        });
+        delete payment.split;
+        const retryPayload = { ...payload, code: `bo_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`, payments: [payment] };
+        const retryOrder = await pagarmeRequest('/orders', {
+            method: 'POST',
+            headers: { 'Idempotency-Key': crypto.randomUUID() },
+            body: JSON.stringify(retryPayload),
+        });
+        console.log('Pagar.me retry response:', JSON.stringify(retryOrder, null, 2));
+        return normalizePagarmeOrder(retryOrder);
+    }
+
+    return normalizePagarmeOrder(order);
 }
 
 export async function getPagarmeOrderStatusService(orderId: string) {
