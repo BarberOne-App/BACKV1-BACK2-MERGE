@@ -3,6 +3,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/authMiddleware.js';
 import {
   listPublicPlatformPlansController,
+  listActivePlatformPlansController,
   listPlatformPlansController,
   getPlatformPlanByIdController,
   createPlatformPlanController,
@@ -14,6 +15,9 @@ const router = Router();
 
 // Rota pública (sem autenticação) — usada pela Landing Page
 router.get('/public/platform-plans', asyncHandler(listPublicPlatformPlansController));
+
+// Rota autenticada — retorna todos os planos ativos (sem filtro de is_public)
+router.get('/platform-plans/active', requireAuth, asyncHandler(listActivePlatformPlansController));
 
 // Rotas administrativas — protegidas por SuperAdmin
 router.get('/platform-plans', requireAuth, requireSuperAdmin, asyncHandler(listPlatformPlansController));

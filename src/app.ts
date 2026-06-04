@@ -26,6 +26,7 @@ import employeeValeRouter from "./routes/employeeValeRouter.js";
 import employeePaymentRouter from "./routes/employeePaymentRouter.js";
 import superAdminRouter from "./routes/superAdminRouter.js";
 import dashboardRouter from "./routes/dashboardRouter.js";
+import platformPlanRouter from "./routes/platformPlanRouter.js";
 
 dotenv.config();
 const app = express();
@@ -67,6 +68,7 @@ app.use(employeeValeRouter);
 app.use(employeePaymentRouter);
 app.use(superAdminRouter);
 app.use(dashboardRouter);
+app.use(platformPlanRouter);
 app.use("/pagarme", pagarmeRoutes);
 app.use('/pagarme/subscriptions', pagarmeSubs);
 app.use(errorHandler);

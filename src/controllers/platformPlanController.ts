@@ -31,6 +31,19 @@ export async function listPublicPlatformPlansController(
   }
 }
 
+export async function listActivePlatformPlansController(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const items = await listPlatformPlansService({});
+    return res.json({ items });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export async function listPlatformPlansController(
   _req: Request,
   res: Response,

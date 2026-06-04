@@ -2,6 +2,67 @@ import crypto from 'crypto';
 import prisma from '../database/database.js';
 import { pagarmeRequest } from './pagarmeApi.js';
 
+export async function getBarbershopPlatformSubscriptionService(barbershopId: string) {
+    const subscription = await prisma.barbershop_platform_subscriptions.findUnique({
+        where: { barbershop_id: barbershopId },
+        include: { platform_plan: true },
+    });
+
+    if (!subscription) return { subscription: null };
+
+    return {
+        subscription: {
+            id: subscription.id,
+            status: subscription.status,
+            selectedPlan: subscription.selected_plan,
+            plan: subscription.platform_plan
+                ? {
+                      id: subscription.platform_plan.id,
+                      name: subscription.platform_plan.name,
+                      description: subscription.platform_plan.description ?? null,
+                      price: Number(subscription.platform_plan.price),
+                      interval: subscription.platform_plan.interval,
+                      intervalCount: subscription.platform_plan.interval_count,
+                      trialPeriodDays: subscription.platform_plan.trial_period_days,
+                      isRecommended: subscription.platform_plan.is_recommended,
+                      isPublic: subscription.platform_plan.is_public,
+                  }
+                : null,
+            amount: subscription.amount ? Number(subscription.amount) : null,
+            nextBillingDate: subscription.next_billing_date?.toISOString() ?? null,
+            startDate: subscription.start_date?.toISOString() ?? null,
+            createdAt: subscription.created_at?.toISOString() ?? null,
+        },
+    };
+}
+
+export async function cancelBarbershopPlatformSubscriptionService(barbershopId: string) {
+    const subscription = await prisma.barbershop_platform_subscriptions.findUnique({
+        where: { barbershop_id: barbershopId },
+    });
+
+    if (!subscription) throw new Error('Assinatura da plataforma não encontrada.');
+
+    if (subscription.pagarme_subscription_id) {
+        await pagarmeRequest(`/subscriptions/${subscription.pagarme_subscription_id}/cancel`, {
+            method: 'DELETE',
+        }).catch(() => {});
+    }
+
+    const now = new Date();
+    await prisma.barbershop_platform_subscriptions.update({
+        where: { barbershop_id: barbershopId },
+        data: { status: 'cancelled', canceled_at: now, updated_at: now },
+    });
+
+    await prisma.barbershops.update({
+        where: { id: barbershopId },
+        data: { platform_subscription_status: 'cancelled' },
+    });
+
+    return { ok: true };
+}
+
 function onlyNumbers(value: any) {
     return String(value || '').replace(/\D/g, '');
 }
@@ -83,15 +144,25 @@ export async function createPagarmeBarbershopPlatformSubscriptionService(params:
         throw new Error('Barbearia não identificada para criar a assinatura da plataforma.');
     }
 
-    const selectedPlan = String(params.selectedPlan || '').trim().toLowerCase();
-    if (!selectedPlan) {
-        throw new Error('Plano da plataforma é obrigatório.');
+    const platformPlanId = String(params.platformPlanId || '').trim();
+    if (!platformPlanId) {
+        throw new Error('ID do plano da plataforma é obrigatório.');
     }
 
-    const planId = getPlatformPlanId(selectedPlan);
-    if (!planId) {
-        throw new Error(`Env não configurada para o plano da plataforma: ${selectedPlan}.`);
+    const platformPlan = await prisma.platform_plans.findUnique({
+        where: { id: platformPlanId },
+    });
+
+    if (!platformPlan) {
+        throw new Error('Plano da plataforma não encontrado.');
     }
+
+    if (!platformPlan.pagarme_plan_id) {
+        throw new Error('Plano da plataforma não possui ID Pagar.me configurado.');
+    }
+
+    const selectedPlan = platformPlan.name.toLowerCase();
+    const planId = platformPlan.pagarme_plan_id;
 
     const shop = await prisma.barbershops.findUnique({
         where: { id: barbershopId },
@@ -174,6 +245,7 @@ export async function createPagarmeBarbershopPlatformSubscriptionService(params:
         where: { barbershop_id: barbershopId },
         update: {
             selected_plan: selectedPlan,
+            platform_plan_id: platformPlanId,
             pagarme_subscription_id: pagarmeSubscription?.id || null,
             pagarme_plan_id: planId,
             pagarme_customer_id: pagarmeSubscription?.customer?.id || pagarmeSubscription?.customer_id || null,
@@ -188,6 +260,7 @@ export async function createPagarmeBarbershopPlatformSubscriptionService(params:
         create: {
             barbershop_id: barbershopId,
             selected_plan: selectedPlan,
+            platform_plan_id: platformPlanId,
             pagarme_subscription_id: pagarmeSubscription?.id || null,
             pagarme_plan_id: planId,
             pagarme_customer_id: pagarmeSubscription?.customer?.id || pagarmeSubscription?.customer_id || null,
