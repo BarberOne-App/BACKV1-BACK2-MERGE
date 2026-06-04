@@ -158,6 +158,66 @@ export async function createPaymentInBarbershop(data: {
   });
 }
 
+/* ───── SYNC STATUS BY APPOINTMENT ───── */
+export async function syncPaymentStatusByAppointment(
+  barbershopId: string,
+  appointmentId: string,
+  status: string,
+  paidAt?: Date | null,
+) {
+  const existing = await prisma.payment_transactions.findFirst({
+    where: { barbershop_id: barbershopId, appointment_id: appointmentId },
+    select: { id: true },
+  });
+
+  if (!existing) return null;
+
+  return prisma.payment_transactions.update({
+    where: { id: existing.id },
+    data: {
+      status: status as any,
+      paid_at: paidAt ?? null,
+      updated_at: new Date(),
+    },
+    include: PAYMENT_INCLUDE,
+  });
+}
+
+/* ───── SUMMARY (aggregated totals) ───── */
+export async function getPaymentSummary(barbershopId: string) {
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayEnd = new Date(todayStart.getTime() + 86400000);
+
+  const [all, todayPaid] = await Promise.all([
+    prisma.payment_transactions.groupBy({
+      by: ['status'],
+      where: { barbershop_id: barbershopId },
+      _sum: { amount: true },
+    }),
+    prisma.payment_transactions.aggregate({
+      where: {
+        barbershop_id: barbershopId,
+        status: { in: ['paid', 'approved'] },
+        paid_at: { gte: todayStart, lt: todayEnd },
+      },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const toNum = (v: any) => (v == null ? 0 : typeof v.toNumber === 'function' ? v.toNumber() : Number(v));
+
+  const paid = all.filter((r) => r.status === 'paid' || r.status === 'approved')
+    .reduce((sum, r) => sum + toNum(r._sum.amount), 0);
+  const pending = all.filter((r) => r.status === 'pending')
+    .reduce((sum, r) => sum + toNum(r._sum.amount), 0);
+  const refunded = all.filter((r) => r.status === 'refunded')
+    .reduce((sum, r) => sum + toNum(r._sum.amount), 0);
+  const todayTotal = toNum(todayPaid._sum.amount);
+
+  return { paid, pending, refunded, today: todayTotal };
+}
+
 /* ───── DELETE ───── */
 export async function deletePaymentInBarbershop(barbershopId: string, id: string) {
   const existing = await prisma.payment_transactions.findFirst({

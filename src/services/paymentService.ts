@@ -3,6 +3,7 @@ import {
   createPaymentInBarbershop,
   deletePaymentInBarbershop,
   findPaymentByIdInBarbershop,
+  getPaymentSummary,
   listPaymentsInBarbershop,
   updatePaymentInBarbershop,
 } from "../repository/paymentRepository.js";
@@ -130,19 +131,23 @@ export async function listAllPaymentsService(params: {
   const page = params.query.page ?? 1;
   const limit = params.query.limit ?? 20;
 
-  const { items, total } = await listPaymentsInBarbershop({
-    barbershopId: params.barbershopId,
-    userId,
-    status: params.query.status,
-    method: params.query.method,
-    page,
-    limit,
-  });
+  const [{ items, total }, summary] = await Promise.all([
+    listPaymentsInBarbershop({
+      barbershopId: params.barbershopId,
+      userId,
+      status: params.query.status,
+      method: params.query.method,
+      page,
+      limit,
+    }),
+    getPaymentSummary(params.barbershopId),
+  ]);
 
   return {
     page,
     limit,
     total,
+    summary,
     items: items.map((item) => ({
       ...serialize(item),
       paymentType: item.appointment_id ? "appointment" : "subscription",

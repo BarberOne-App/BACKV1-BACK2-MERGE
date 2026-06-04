@@ -14,6 +14,7 @@ import {
   findBarberByUserIdInBarbershop,
 } from "../repository/barberRepository.js";
 import { findBlockedDateByDate } from "../repository/blockedDateRepository.js";
+import { createPaymentInBarbershop, syncPaymentStatusByAppointment } from "../repository/paymentRepository.js";
 import { getHomeInfoByBarbershop } from "../repository/settingRepository.js";
 import { findActiveSubscriptionByUser } from "../repository/subscriptionRepository.js";
 import {
@@ -770,6 +771,28 @@ export async function createAppointmentService(params: {
     })),
   });
 
+  // Cria automaticamente o registro de pagamento para o agendamento
+  const servicesTotal = normalizedServices.reduce(
+    (sum, s) => sum + s.unitPrice * s.quantity,
+    0,
+  );
+  const productsTotal = (products ?? []).reduce(
+    (sum, p) => sum + p.price * (1 - (p.discount ?? 0) / 100) * (p.quantity ?? 1),
+    0,
+  );
+  const totalAmount = servicesTotal + productsTotal;
+
+  await createPaymentInBarbershop({
+    barbershopId: params.barbershopId,
+    userId: clientId,
+    appointmentId: created.id,
+    amount: totalAmount,
+    method: 'local',
+    status: 'pending',
+  }).catch((err) => {
+    console.error('[appointmentService] Falha ao criar registro de pagamento:', err);
+  });
+
   return serializeAppointment(created);
 }
 
@@ -906,6 +929,28 @@ export async function updateAppointmentService(params: {
   );
 
   if (!updated) throw notFound("Agendamento não encontrado");
+
+  // Sincroniza o status do pagamento com o status do agendamento
+  if (params.data.status) {
+    const newStatus = String(params.data.status).toLowerCase();
+    if (isCompletedStatus(newStatus)) {
+      // Agendamento finalizado → pagamento pago
+      syncPaymentStatusByAppointment(
+        params.barbershopId,
+        params.appointmentId,
+        'paid',
+        new Date(),
+      ).catch(() => {});
+    } else if (newStatus === 'cancelled' || newStatus === 'canceled' || newStatus === 'no_show') {
+      // Agendamento cancelado/no-show → pagamento falhou
+      syncPaymentStatusByAppointment(
+        params.barbershopId,
+        params.appointmentId,
+        'failed',
+        null,
+      ).catch(() => {});
+    }
+  }
 
   const statusWillBeConfirmed = String(params.data.status || "").toLowerCase() === "confirmed";
   const wasAlreadyConfirmed = String(existingAppointment.status || "").toLowerCase() === "confirmed";
