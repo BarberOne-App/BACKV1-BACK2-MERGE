@@ -117,12 +117,25 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
     }
 
     const currentUserId = String(currentUser?.id || params.userId || '');
-    const existingActiveSubscription = currentUserId
-        ? await findActiveSubscriptionByUser(String(barbershopId), currentUserId)
+
+    // Busca qualquer assinatura existente do usuário (para upsert)
+    const existingSubscription = currentUserId
+        ? await prisma.subscriptions.findFirst({
+            where: { user_id: currentUserId, barbershop_id: String(barbershopId) },
+            select: { id: true, pagarme_subscription_id: true, status: true },
+        })
         : null;
 
-    if (existingActiveSubscription) {
-        throw new Error('Usuário já possui uma assinatura ativa nesta barbearia.');
+    // Cancela a assinatura anterior no Pagar.me se existir
+    if (existingSubscription?.pagarme_subscription_id) {
+        try {
+            await pagarmeRequest(
+                `/subscriptions/${existingSubscription.pagarme_subscription_id}/cancel`,
+                { method: 'DELETE' },
+            );
+        } catch {
+            // Ignora erro de cancelamento — pode já estar cancelada no Pagar.me
+        }
     }
 
     const pagarmePlanId = await ensurePagarmePlan(plan);
@@ -175,28 +188,36 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
         body: JSON.stringify(payload),
     });
 
-    const subscription = await prisma.subscriptions.create({
-        data: {
-            user_id: String(currentUser.id),
-            barbershop_id: String(barbershopId),
-            plan_id: String(plan.id),
+    const subscriptionData = {
+        plan_id: String(plan.id),
+        pagarme_subscription_id: pagarmeSubscription.id,
+        pagarme_plan_id: pagarmePlanId,
+        pagarme_customer_id: pagarmeSubscription.customer?.id || null,
+        pagarme_recipient_id: shop.pagarme_recipient_id,
+        status: pagarmeSubscription.status || 'active',
+        payment_method: 'credito' as any,
+        amount: Number(plan.price),
+        next_billing_at: pagarmeSubscription.next_billing_at
+            ? new Date(pagarmeSubscription.next_billing_at)
+            : null,
+        last_billing_at: new Date(),
+        ended_at: null,
+        days_overdue: 0,
+    };
 
-            pagarme_subscription_id: pagarmeSubscription.id,
-            pagarme_plan_id: pagarmePlanId,
-            pagarme_customer_id: pagarmeSubscription.customer?.id || null,
-            pagarme_recipient_id: shop.pagarme_recipient_id,
-
-            status: pagarmeSubscription.status || 'active',
-            payment_method: 'credito',
-            amount: Number(plan.price),
-
-            created_at: new Date(),
-            next_billing_at: pagarmeSubscription.next_billing_at
-                ? new Date(pagarmeSubscription.next_billing_at)
-                : null,
-            last_billing_at: new Date(),
-        },
-    });
+    const subscription = existingSubscription
+        ? await prisma.subscriptions.update({
+            where: { id: existingSubscription.id },
+            data: { ...subscriptionData, updated_at: new Date() },
+        })
+        : await prisma.subscriptions.create({
+            data: {
+                user_id: String(currentUser.id),
+                barbershop_id: String(barbershopId),
+                created_at: new Date(),
+                ...subscriptionData,
+            },
+        });
 
     return {
         id: subscription.id,
