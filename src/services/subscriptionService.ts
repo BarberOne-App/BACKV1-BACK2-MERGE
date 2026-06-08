@@ -1,4 +1,5 @@
 import { badRequest, conflict, forbidden, notFound } from "../errors/index.js";
+import prisma from "../database/database.js";
 import {
   applyOverdueStates,
   cancelSubscriptionInBarbershop,
@@ -174,9 +175,22 @@ export async function createSubscriptionService(params: {
       ? params.actorId
       : params.data.userId ?? params.actorId;
 
+  // Verifica assinatura ativa (lógica de negócio)
   const existing = await findActiveSubscriptionByUser(params.barbershopId, userId);
   if (existing) {
     throw conflict("Usuário já possui uma assinatura ativa nesta barbearia");
+  }
+
+  // Verifica qualquer registro existente para evitar violação do constraint único
+  const anyExisting = await prisma.subscriptions.findFirst({
+    where: { barbershop_id: params.barbershopId, user_id: userId },
+    select: { id: true, status: true },
+  });
+  if (anyExisting) {
+    if (anyExisting.status === "cancelled" || anyExisting.status === "expired") {
+      throw conflict("Voce ja teve uma assinatura nesta barbearia. Entre em contato para reativa-la.");
+    }
+    throw conflict("Usuário já possui uma assinatura nesta barbearia");
   }
 
   // 2. Buscar plano para obter cutsPerMonth

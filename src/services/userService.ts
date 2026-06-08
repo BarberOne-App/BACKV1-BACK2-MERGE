@@ -233,6 +233,17 @@ export async function createUserService(params: {
   //   await ensureCanAddRole(params.barbershopId, "admin", 1);
   // }
 
+  const defaultReceptionistPermissions: Record<string, boolean> = {
+    manageAgendamentos: true,
+    manageOffScheduleAppointments: true,
+    manageSettings: true,
+  };
+
+  const resolvedPermissions =
+    params.data.role === "receptionist"
+      ? { ...defaultReceptionistPermissions, ...(params.data.permissions ?? {}) }
+      : (params.data.permissions ?? undefined);
+
   const user = await createUserInBarbershop({
     barbershopId: params.barbershopId,
     name: params.data.name.trim(),
@@ -243,7 +254,7 @@ export async function createUserService(params: {
     role: params.data.role,
     isAdmin: params.data.isAdmin ?? false,
     passwordHash,
-    permissions: params.data.permissions,
+    permissions: resolvedPermissions,
     photoUrl: params.data.photoUrl ?? null,
   });
 
