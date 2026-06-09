@@ -117,7 +117,7 @@ function serializeVale(vale: any) {
 function buildCommissionByEmployee(appointments: any[]) {
   const totals = new Map<
     string,
-    { amount: number; services: number; appointments: number }
+    { commissionAmount: number; revenue: number; services: number; appointments: number }
   >();
 
   console.log("[employee-payroll] commission appointments loaded", {
@@ -137,7 +137,8 @@ function buildCommissionByEmployee(appointments: any[]) {
     }
 
     const current = totals.get(employeeId) ?? {
-      amount: 0,
+      commissionAmount: 0,
+      revenue: 0,
       services: 0,
       appointments: 0,
     };
@@ -179,14 +180,16 @@ function buildCommissionByEmployee(appointments: any[]) {
         commissionAmount,
       });
 
-      current.amount += commissionAmount;
+      current.revenue += amount;
+      current.commissionAmount += commissionAmount;
       current.services += quantity;
     }
 
     console.log("[employee-payroll] employee commission running total", {
       employeeId,
       appointmentId: appointment.id,
-      runningCommissionAmount: roundMoney(current.amount),
+      runningRevenue: roundMoney(current.revenue),
+      runningCommissionAmount: roundMoney(current.commissionAmount),
       runningServices: current.services,
       runningAppointments: current.appointments,
     });
@@ -198,7 +201,8 @@ function buildCommissionByEmployee(appointments: any[]) {
     "[employee-payroll] commission totals by employee",
     Array.from(totals.entries()).map(([employeeId, total]) => ({
       employeeId,
-      amount: roundMoney(total.amount),
+      revenue: roundMoney(total.revenue),
+      commissionAmount: roundMoney(total.commissionAmount),
       services: total.services,
       appointments: total.appointments,
     }))
@@ -393,12 +397,25 @@ export async function getEmployeePayrollSummaryService(params: {
     const employeePayments = paymentsByEmployee.get(employee.id) ?? [];
     const employeePaymentHistory = paymentHistoryByEmployee.get(employee.id) ?? [];
     const commissionInfo = commissionByEmployee.get(employee.id) ?? {
-      amount: 0,
+      commissionAmount: 0,
+      revenue: 0,
       services: 0,
       appointments: 0,
     };
     const baseSalary = Number(barber?.salary ?? employee.salary ?? 0);
-    const commission = roundMoney(commissionInfo.amount);
+    const commission = roundMoney(commissionInfo.commissionAmount);
+    const totalRevenue = roundMoney(commissionInfo.revenue);
+    const barbershopShare = roundMoney(Math.max(totalRevenue - commission, 0));
+    const extraPago = roundMoney(
+      employeePayments
+        .filter(isExtraEmployeePayment)
+        .reduce((sum: number, p: any) => sum + Number(p.net_amount || 0), 0)
+    );
+    const folhaPago = roundMoney(
+      employeePayments
+        .filter((p: any) => !isExtraEmployeePayment(p))
+        .reduce((sum: number, p: any) => sum + Number(p.net_amount || 0), 0)
+    );
     const totalVales = roundMoney(
       employeeVales.reduce((sum, vale) => sum + Number(vale.amount || 0), 0)
     );
@@ -425,8 +442,12 @@ export async function getEmployeePayrollSummaryService(params: {
       employeeName: employee.name,
       role: employee.role,
       baseSalary,
+      totalRevenue,
       commission,
+      barbershopShare,
       totalVales,
+      extraPago,
+      folhaPago,
       grossAmount,
       netAmount,
       paidAmount,
@@ -466,6 +487,10 @@ export async function getEmployeePayrollSummaryService(params: {
       status,
       paidAt: employeePaymentHistory[0]?.paid_at ?? employeePaymentHistory[0]?.created_at ?? null,
       paymentId: employeePaymentHistory[0]?.id ?? null,
+      totalRevenue,
+      barbershopShare,
+      extraPago,
+      folhaPago,
       appointmentsCount: commissionInfo.appointments,
       servicesCount: commissionInfo.services,
       vales: employeeVales.map(serializeVale),
