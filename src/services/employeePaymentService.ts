@@ -147,7 +147,9 @@ function buildCommissionByEmployee(appointments: any[]) {
       const unitPrice = Number(service.unit_price) || 0;
       const quantity = Number(service.quantity) || 1;
       const amount = unitPrice * quantity;
-      const commissionPercent = decimalToNumber(service.services?.comission_percent);
+      const serviceCommissionPercent = decimalToNumber(service.services?.comission_percent);
+      const barberCommissionPercent = decimalToNumber(appointment.barbers?.commission_percent);
+      const commissionPercent = serviceCommissionPercent ?? barberCommissionPercent;
       const commissionType = resolveServiceCommissionType({
         coveredByPlan: service.services?.covered_by_plan,
         commissionPercent,
@@ -170,7 +172,9 @@ function buildCommissionByEmployee(appointments: any[]) {
         unitPrice,
         quantity,
         amount,
-        serviceCommissionPercent: commissionPercent,
+        serviceCommissionPercent,
+        barberCommissionPercent,
+        effectiveCommissionPercent: commissionPercent,
         fallbackCommissionType: commissionType,
         commissionAmount,
       });
