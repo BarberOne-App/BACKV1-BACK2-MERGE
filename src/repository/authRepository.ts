@@ -77,7 +77,17 @@ export async function findUserByEmail(email: string, tx?: Prisma.TransactionClie
   return db.users.findFirst({
     where: { email },
     include: {
-      current_barbershop: { select: { id: true, name: true, slug: true, logo_url: true } },
+      current_barbershop: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          logo_url: true,
+          status: true,
+          created_at: true,
+          platform_subscription_status: true,
+        },
+      },
     },
   });
 }

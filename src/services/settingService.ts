@@ -96,6 +96,8 @@ function mapBarbershopProfile(row: {
     slug: string;
     pagarme_recipient_id?: string | null;
     pagarme_recipient_status?: string | null;
+    created_at?: Date | string | null;
+    platform_subscription_status?: string | null;
 }) {
     return {
         id: row.id,
@@ -107,6 +109,8 @@ function mapBarbershopProfile(row: {
         slug: row.slug,
         pagarmeRecipientId: row.pagarme_recipient_id ?? null,
         pagarmeRecipientStatus: row.pagarme_recipient_status ?? null,
+        createdAt: row.created_at ? new Date(row.created_at as string).toISOString() : null,
+        platformSubscriptionStatus: row.platform_subscription_status ?? null,
     };
 }
 

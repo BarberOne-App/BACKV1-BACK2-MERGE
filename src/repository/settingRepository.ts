@@ -17,6 +17,8 @@ const barbershopProfileSelect = {
     slug: true,
     pagarme_recipient_id: true,
     pagarme_recipient_status: true,
+    created_at: true,
+    platform_subscription_status: true,
 };
 
 export function getBarbershopProfileById(barbershopId: string) {
