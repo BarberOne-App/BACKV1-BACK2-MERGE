@@ -103,6 +103,15 @@ export async function emailExistsInBarbershop(barbershopId: string, email: strin
   return !!user;
 }
 
+/* ── CHECK CPF (global unique) ── */
+export async function cpfExistsForOtherUser(cpf: string, excludeUserId: string) {
+  const user = await prisma.users.findFirst({
+    where: { cpf, id: { not: excludeUserId } },
+    select: { id: true },
+  });
+  return !!user;
+}
+
 /* ── CREATE ── */
 export async function createUserInBarbershop(data: {
   barbershopId: string;

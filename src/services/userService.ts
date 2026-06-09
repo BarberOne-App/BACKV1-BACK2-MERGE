@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import { conflict, forbidden, notFound } from "../errors/index.js";
 // import { ensureCanAddRole } from "./planLimitService.js";
 import {
+  cpfExistsForOtherUser,
   createUserInBarbershop,
   deleteUserFromBarbershop,
   emailExistsInBarbershop,
@@ -574,7 +575,14 @@ export async function updateUserService(params: {
   }
 
   if (params.data.phone !== undefined) updateData.phone = params.data.phone ?? null;
-  if (params.data.cpf !== undefined) updateData.cpf = params.data.cpf ?? null;
+
+  if (params.data.cpf !== undefined) {
+    if (params.data.cpf !== null) {
+      const cpfTaken = await cpfExistsForOtherUser(params.data.cpf, params.userId);
+      if (cpfTaken) throw conflict("CPF já cadastrado");
+    }
+    updateData.cpf = params.data.cpf ?? null;
+  }
   if (params.data.birthDate !== undefined) {
     updateData.birth_date = params.data.birthDate ? new Date(params.data.birthDate) : null;
   }
