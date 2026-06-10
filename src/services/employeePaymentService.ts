@@ -422,17 +422,13 @@ export async function getEmployeePayrollSummaryService(params: {
     );
     const grossAmount = roundMoney(baseSalary + commission);
     const netAmount = roundMoney(Math.max(grossAmount - totalVales, 0));
-    const paidAmount = roundMoney(
-      employeePayments.reduce(
-        (sum, payment) => sum + Number(payment.net_amount || 0),
-        0
-      )
-    );
+    // Apenas pagamentos de folha quitam comissão — extras (adiantamentos) não reduzem o saldo pendente.
+    const paidAmount = folhaPago;
     const amountDue = roundMoney(Math.max(netAmount - paidAmount, 0));
     const status =
       grossAmount <= 0
         ? "empty"
-        : netAmount <= 0 || paidAmount >= netAmount
+        : amountDue <= 0
           ? "paid"
           : paidAmount > 0
             ? "partial"
