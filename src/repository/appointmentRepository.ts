@@ -84,12 +84,18 @@ export async function listAppointmentsInBarbershop(params: {
 
   if (params.dateFrom || params.dateTo) {
     where.start_at = {};
-    if (params.dateFrom) {
-      (where.start_at as Prisma.DateTimeFilter).gte = new Date(`${params.dateFrom}T00:00:00Z`);
-    }
-    if (params.dateTo) {
-      (where.start_at as Prisma.DateTimeFilter).lte = new Date(`${params.dateTo}T23:59:59Z`);
-    }
+    const gteDate = params.dateFrom ? new Date(`${params.dateFrom}T00:00:00-03:00`) : undefined;
+    const lteDate = params.dateTo   ? new Date(`${params.dateTo}T23:59:59-03:00`)   : undefined;
+    if (gteDate) (where.start_at as Prisma.DateTimeFilter).gte = gteDate;
+    if (lteDate) (where.start_at as Prisma.DateTimeFilter).lte = lteDate;
+
+    // DEBUG LOG — remover após validação
+    console.log("[listAppointments] date filter (SP timezone)", {
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      gteUTC: gteDate?.toISOString(),
+      lteUTC: lteDate?.toISOString(),
+    });
   }
 
   const skip = (params.page - 1) * params.limit;
