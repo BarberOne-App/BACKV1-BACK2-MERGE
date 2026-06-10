@@ -73,6 +73,11 @@ function buildSaoPauloDateTime(date: string, time: string) {
 }
 
 function serializeAppointment(a: any) {
+  const barberCommissionPercent =
+    a.barbers?.commission_percent != null
+      ? decimalToNumber(a.barbers.commission_percent)
+      : null;
+
   const services = (a.appointment_services ?? []).map((s: any) => {
     const unitPrice = decimalToNumber(s.unit_price);
     const quantity = Number(s.quantity ?? 1);
@@ -82,15 +87,17 @@ function serializeAppointment(a: any) {
       s.services?.comission_percent ?? s.services?.commission_percent;
     const rawCommissionPercent =
       dbCommissionPercent == null ? null : decimalToNumber(dbCommissionPercent);
+    // Prioridade: % do serviço → % do barbeiro → padrão do tipo
+    const effectiveCommissionPercent = rawCommissionPercent ?? barberCommissionPercent;
     const commissionType = resolveServiceCommissionType({
       coveredByPlan: s.services?.covered_by_plan,
-      commissionPercent: rawCommissionPercent,
+      commissionPercent: effectiveCommissionPercent,
       serviceName: s.service_name,
     });
     const commissionAmount = calculateCommission({
       amount: totalPrice,
       type: commissionType,
-      commissionPercent: rawCommissionPercent,
+      commissionPercent: effectiveCommissionPercent,
     });
 
     return {
@@ -102,8 +109,8 @@ function serializeAppointment(a: any) {
       quantity: safeQuantity,
       totalPrice,
       commissionType,
-      commissionPercent: rawCommissionPercent ?? getCommissionPercentByType(commissionType),
-      commission_percent: rawCommissionPercent ?? getCommissionPercentByType(commissionType),
+      commissionPercent: effectiveCommissionPercent ?? getCommissionPercentByType(commissionType),
+      commission_percent: effectiveCommissionPercent ?? getCommissionPercentByType(commissionType),
       commissionAmount,
     };
   });

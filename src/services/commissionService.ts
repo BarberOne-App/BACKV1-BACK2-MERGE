@@ -38,13 +38,10 @@ export function calculateCommission(params: {
   commissionPercent?: number | null;
 }) {
   const amount = Number(params.amount) || 0;
-  const parsed = Number(params.commissionPercent);
+  // Igual ao V1: 0 é um percentual válido (serviços de assinatura têm comissão = 0)
   const hasConfiguredPercent =
-    params.commissionPercent !== null &&
-    params.commissionPercent !== undefined &&
-    Number.isFinite(parsed) &&
-    parsed > 0;
-  const commissionPercent = hasConfiguredPercent ? parsed : NaN;
+    params.commissionPercent !== null && params.commissionPercent !== undefined;
+  const commissionPercent = hasConfiguredPercent ? Number(params.commissionPercent) : NaN;
 
   const effectivePercent = Number.isFinite(commissionPercent)
     ? commissionPercent

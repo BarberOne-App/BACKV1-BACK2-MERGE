@@ -49,7 +49,8 @@ function serialize(payment: any) {
 }
 
 function toDate(value: string, endOfDay = false) {
-  return new Date(`${value}T${endOfDay ? "23:59:59" : "00:00:00"}Z`);
+  // Usa fuso de São Paulo (-03:00) igual ao V1 para não cortar atendimentos das 21h-23h no último dia
+  return new Date(`${value}T${endOfDay ? "23:59:59" : "00:00:00"}-03:00`);
 }
 
 function roundMoney(value: number) {
