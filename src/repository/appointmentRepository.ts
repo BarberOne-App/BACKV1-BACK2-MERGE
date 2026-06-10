@@ -15,7 +15,7 @@ const appointmentSelect = {
   created_at: true,
   updated_at: true,
   barbers: {
-    select: { id: true, display_name: true, photo_url: true },
+    select: { id: true, display_name: true, photo_url: true, commission_percent: true },
   },
   users: {
     select: { id: true, name: true, email: true, phone: true },

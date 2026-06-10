@@ -251,16 +251,17 @@ export async function listEmployeePaymentsByPeriod(params: {
   periodEnd: string;
   employeeId?: string;
 }) {
+  // Usa paid_at (horário de Brasília) como referência, igual ao V1 que filtra por paidAt
   return prisma.employee_payments.findMany({
     where: {
       barbershop_id: params.barbershopId,
-      created_at: {
-        gte: new Date(`${params.periodStart}T00:00:00Z`),
-        lte: new Date(`${params.periodEnd}T23:59:59Z`),
+      paid_at: {
+        gte: new Date(`${params.periodStart}T00:00:00-03:00`),
+        lte: new Date(`${params.periodEnd}T23:59:59-03:00`),
       },
       ...(params.employeeId ? { employee_id: params.employeeId } : {}),
     },
-    orderBy: { created_at: "desc" },
+    orderBy: { paid_at: "desc" },
     include: EMPLOYEE_PAYMENT_INCLUDE,
   });
 }
