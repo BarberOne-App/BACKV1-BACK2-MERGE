@@ -183,12 +183,12 @@ export async function listCommissionAppointments(params: {
   periodEnd: Date;
   employeeId?: string;
 }) {
-  // V1 filtra atendimentos pela DATA DO ATENDIMENTO (start_at), não pela data de pagamento.
-  // Todos os atendimentos não-cancelados do período entram no cálculo, independente de status de pagamento.
+  // Apenas atendimentos realizados (confirmed/completed) geram comissão — alinhado com a tela do barbeiro.
+  // scheduled, cancelled e no_show são excluídos.
   return prisma.appointments.findMany({
     where: {
       barbershop_id: params.barbershopId,
-      status: { notIn: ["cancelled", "no_show"] },
+      status: { in: ["confirmed", "completed"] as any[] },
       start_at: {
         gte: params.periodStart,
         lte: params.periodEnd,
