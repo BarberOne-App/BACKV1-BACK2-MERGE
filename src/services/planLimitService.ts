@@ -145,6 +145,8 @@ export async function validatePlanUserLimit(
   const planName = subscription.subscription_plans?.name || null;
   const planKey = getPlanKey(planName);
 
+  console.log("PLANO ENCONTRADO AQUI:", planName);
+
   // Se for premium, libera
   if (planKey === "premium") {
     return {
