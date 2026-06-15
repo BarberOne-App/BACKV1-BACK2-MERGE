@@ -21,13 +21,6 @@ function getStartOfToday() {
   return date;
 }
 
-function getPendingGraceLimitDate() {
-  const startOfToday = getStartOfToday();
-  const graceLimit = new Date(startOfToday);
-  graceLimit.setDate(graceLimit.getDate() - 5);
-  return graceLimit;
-}
-
 /* ───── LIST ───── */
 export async function listSubscriptionsInBarbershop(params: {
   barbershopId: string;
@@ -86,27 +79,15 @@ export async function findActiveSubscriptionByUser(
   userId: string
 ) {
   const startOfToday = getStartOfToday();
-  const pendingGraceLimit = getPendingGraceLimitDate();
 
   return prisma.subscriptions.findFirst({
     where: {
       barbershop_id: barbershopId,
       user_id: userId,
+      status: "active",
       OR: [
-        {
-          status: "active",
-          OR: [
-            { next_billing_at: null },
-            { next_billing_at: { gte: startOfToday } },
-          ],
-        },
-        {
-          status: "paused",
-          next_billing_at: {
-            gte: pendingGraceLimit,
-            lt: startOfToday,
-          },
-        },
+        { next_billing_at: null },
+        { next_billing_at: { gte: startOfToday } },
       ],
     },
     orderBy: [
@@ -300,26 +281,14 @@ export async function applyOverdueStates(
 /* ───── FIND ACTIVE BY BARBERSHOP (any owner) ───── */
 export async function findActiveSubscriptionByBarbershop(barbershopId: string) {
   const startOfToday = getStartOfToday();
-  const pendingGraceLimit = getPendingGraceLimitDate();
 
   return prisma.subscriptions.findFirst({
     where: {
       barbershop_id: barbershopId,
+      status: "active",
       OR: [
-        {
-          status: "active",
-          OR: [
-            { next_billing_at: null },
-            { next_billing_at: { gte: startOfToday } },
-          ],
-        },
-        {
-          status: "paused",
-          next_billing_at: {
-            gte: pendingGraceLimit,
-            lt: startOfToday,
-          },
-        },
+        { next_billing_at: null },
+        { next_billing_at: { gte: startOfToday } },
       ],
     },
     orderBy: [

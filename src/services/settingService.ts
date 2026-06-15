@@ -7,6 +7,7 @@ import {
     upsertHomeInfoByBarbershop,
     updateBarbershopProfileById,
 } from "../repository/settingRepository.js";
+import { expirePlatformSubscription } from "./subscriptionExpirationService.js";
 
 type PayrollFrequency = "weekly" | "biweekly" | "monthly";
 
@@ -119,6 +120,7 @@ export async function getBarbershopProfileService(barbershopId: string) {
         throw badRequest("Barbearia ativa nao encontrada");
     }
 
+    await expirePlatformSubscription(barbershopId);
     const row = await getBarbershopProfileById(barbershopId);
 
     if (!row) {

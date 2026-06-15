@@ -42,6 +42,7 @@ export async function createPlanInBarbershop(data: {
   price: number;
   color?: string | null;
   cutsPerMonth: number;
+  paymentMethod: string;
   active?: boolean;
   recommended?: boolean;
   features?: string[];
@@ -58,12 +59,13 @@ export async function createPlanInBarbershop(data: {
         price: data.price,
         color: data.color ?? null,
         cuts_per_month: data.cutsPerMonth,
+        payment_method: data.paymentMethod as any,
         max_barbers: data.maxBarbers ?? null,
         max_receptionists: data.maxReceptionists ?? null,
         max_admins: data.maxAdmins ?? null,
         active: data.active ?? true,
         recommended: data.recommended ?? false,
-      },
+      } as any,
     });
 
     if (data.features && data.features.length > 0) {
@@ -95,6 +97,7 @@ export async function updatePlanInBarbershop(
     price?: number;
     color?: string | null;
     cutsPerMonth?: number;
+    paymentMethod?: string;
     active?: boolean;
     recommended?: boolean;
     features?: string[];
@@ -115,6 +118,7 @@ export async function updatePlanInBarbershop(
     if (data.price !== undefined) updateData.price = data.price;
     if (data.color !== undefined) updateData.color = data.color;
     if (data.cutsPerMonth !== undefined) updateData.cuts_per_month = data.cutsPerMonth;
+    if (data.paymentMethod !== undefined) updateData.payment_method = data.paymentMethod;
     if (data.maxBarbers !== undefined) updateData.max_barbers = data.maxBarbers;
     if (data.maxReceptionists !== undefined) updateData.max_receptionists = data.maxReceptionists;
     if (data.maxAdmins !== undefined) updateData.max_admins = data.maxAdmins;

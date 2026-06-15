@@ -7,6 +7,7 @@ import {
     updatePagarmeRecipientService,
 } from '../services/pagarmeOrderService.js';
 import { syncPagarmeSubscriptionWebhook } from '../services/pagarmePlatformSubscriptionService.js';
+import { syncClientPixSubscriptionWebhook } from '../services/pagarmeSubscriptionService.js';
 import prisma from '../database/database.js';
 import { Request, Response, NextFunction } from 'express';
 
@@ -91,6 +92,11 @@ export async function pagarmeWebhookController(req: Request, res: Response, next
             if (subscriptionResult?.handled) {
                 return res.status(200).json({ received: true });
             }
+        }
+
+        if (metadataType === 'client_subscription_pix') {
+            const pixResult = await syncClientPixSubscriptionWebhook(order || eventData, metadata);
+            if (pixResult.handled) return res.status(200).json({ received: true });
         }
 
         const isPaid =

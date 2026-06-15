@@ -42,6 +42,7 @@ function serialize(plan: any) {
     price: decimalToNumber(plan.price),
     color: plan.color,
     cutsPerMonth: plan.cuts_per_month,
+    paymentMethod: plan.payment_method,
     maxBarbers: plan.max_barbers,
     maxReceptionists: plan.max_receptionists,
     maxAdmins: plan.max_admins,
@@ -87,6 +88,7 @@ export async function createPlanService(params: {
     price: number;
     color?: string | null;
     cutsPerMonth: number;
+    paymentMethod: string;
     active?: boolean;
     recommended?: boolean;
     features?: string[];
@@ -112,6 +114,7 @@ export async function updatePlanService(params: {
     price?: number;
     color?: string | null;
     cutsPerMonth?: number;
+    paymentMethod?: string;
     active?: boolean;
     recommended?: boolean;
     features?: string[];

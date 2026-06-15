@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import prisma from '../database/database.js';
 import { findActiveSubscriptionByUser } from '../repository/subscriptionRepository.js';
 import { pagarmeRequest } from './pagarmeApi.js';
+import { createPagarmeOrderService, getPagarmeOrderStatusService, normalizePagarmeOrder } from './pagarmeOrderService.js';
 
 function onlyNumbers(value: any) {
     return String(value || '').replace(/\D/g, '');
@@ -91,6 +92,11 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
         throw new Error('Plano não encontrado.');
     }
 
+    const configuredPaymentMethod = String((plan as any).payment_method || '');
+    if (configuredPaymentMethod !== 'credito' && configuredPaymentMethod !== 'debito') {
+        throw new Error('Este plano nao esta configurado para pagamento no cartao.');
+    }
+
     const barbershopId =
         params.barbershopId ||
         plan.barbershop_id ||
@@ -98,6 +104,10 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
 
     if (!barbershopId) {
         throw new Error('Barbearia não identificada para criar a assinatura.');
+    }
+
+    if (String(plan.barbershop_id) !== String(barbershopId)) {
+        throw new Error('O plano informado nao pertence a esta barbearia.');
     }
 
     const shop = await prisma.barbershops.findUnique({
@@ -162,6 +172,7 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
             userId: String(currentUser?.id || params.userId || ''),
             barbershopId: String(barbershopId),
             planId: String(plan.id),
+            planPaymentMethod: configuredPaymentMethod,
         },
         split: {
             enabled: true,
@@ -195,7 +206,7 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
         pagarme_customer_id: pagarmeSubscription.customer?.id || null,
         pagarme_recipient_id: shop.pagarme_recipient_id,
         status: pagarmeSubscription.status || 'active',
-        payment_method: 'credito' as any,
+        payment_method: configuredPaymentMethod as any,
         amount: Number(plan.price),
         next_billing_at: pagarmeSubscription.next_billing_at
             ? new Date(pagarmeSubscription.next_billing_at)
@@ -230,4 +241,187 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
         barbershopId,
         raw: pagarmeSubscription,
     };
+}
+
+function isPaidOrder(order: any) {
+    const normalized = order?.raw ? order : normalizePagarmeOrder(order);
+    return normalized?.status === 'paid' || normalized?.chargeStatus === 'paid';
+}
+
+async function activatePaidPixSubscription(params: {
+    planId: string;
+    orderId: string;
+    userId: string;
+    barbershopId: string;
+}) {
+    const plan = await prisma.subscription_plans.findFirst({
+        where: { id: params.planId, barbershop_id: params.barbershopId },
+    });
+    if (!plan) throw new Error('Plano nao encontrado.');
+    if ((plan as any).payment_method !== 'pix') {
+        throw new Error('Este plano nao esta configurado para pagamento via PIX.');
+    }
+
+    const alreadyProcessed = await prisma.payment_transactions.findFirst({
+        where: { pagarme_order_id: params.orderId, status: 'paid' },
+        select: { subscription_id: true },
+    });
+    if (alreadyProcessed?.subscription_id) {
+        return prisma.subscriptions.findUnique({ where: { id: alreadyProcessed.subscription_id } });
+    }
+
+    const now = new Date();
+    const nextBilling = new Date(now);
+    nextBilling.setMonth(nextBilling.getMonth() + 1);
+    const periodStart = new Date(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    const periodEnd = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0);
+
+    return prisma.$transaction(async (tx) => {
+        const existing = await tx.subscriptions.findFirst({
+            where: { user_id: params.userId, barbershop_id: params.barbershopId },
+        });
+
+        const subscription = existing
+            ? await tx.subscriptions.update({
+                where: { id: existing.id },
+                data: {
+                    plan_id: plan.id,
+                    status: 'active',
+                    payment_method: 'pix',
+                    amount: plan.price,
+                    is_recurring: false,
+                    auto_renewal: false,
+                    last_billing_at: now,
+                    next_billing_at: nextBilling,
+                    ended_at: null,
+                    days_overdue: 0,
+                    overdue_notification_sent: false,
+                    updated_at: now,
+                },
+            })
+            : await tx.subscriptions.create({
+                data: {
+                    user_id: params.userId,
+                    barbershop_id: params.barbershopId,
+                    plan_id: plan.id,
+                    status: 'active',
+                    payment_method: 'pix',
+                    amount: plan.price,
+                    is_recurring: false,
+                    auto_renewal: false,
+                    started_at: now,
+                    last_billing_at: now,
+                    next_billing_at: nextBilling,
+                    created_at: now,
+                },
+            });
+
+        await tx.subscription_cycles.upsert({
+            where: {
+                subscription_id_period_start_period_end: {
+                    subscription_id: subscription.id,
+                    period_start: periodStart,
+                    period_end: periodEnd,
+                },
+            },
+            create: {
+                subscription_id: subscription.id,
+                period_start: periodStart,
+                period_end: periodEnd,
+                cuts_included: plan.cuts_per_month,
+                cuts_used: 0,
+            },
+            update: {
+                cuts_included: plan.cuts_per_month,
+                cuts_used: 0,
+            },
+        });
+
+        await tx.payment_transactions.create({
+            data: {
+                user_id: params.userId,
+                subscription_id: subscription.id,
+                barbershop_id: params.barbershopId,
+                amount: plan.price,
+                method: 'pix',
+                status: 'paid',
+                paid_at: now,
+                pagarme_order_id: params.orderId,
+                pagarme_status: 'paid',
+            },
+        });
+
+        return subscription;
+    });
+}
+
+export async function createPagarmeClientPixOrderService(params: any, currentUser: any): Promise<any> {
+    const barbershopId = String(currentUser?.barbershopId || '');
+    const userId = String(currentUser?.id || '');
+    const plan = await prisma.subscription_plans.findFirst({
+        where: { id: String(params.planId), barbershop_id: barbershopId, active: true },
+    });
+    if (!plan) throw new Error('Plano nao encontrado ou inativo.');
+    if ((plan as any).payment_method !== 'pix') {
+        throw new Error('A forma de pagamento deste plano nao e PIX.');
+    }
+
+    return createPagarmeOrderService({
+        amount: Number(plan.price),
+        paymentMethod: 'pix',
+        customer: {
+            id: userId,
+            name: currentUser?.name,
+            email: currentUser?.email,
+            document: params.customer?.document,
+            phone: params.customer?.phone,
+        },
+        item: { id: plan.id, name: `Assinatura - ${plan.name}` },
+        metadata: {
+            type: 'client_subscription_pix',
+            userId,
+            barbershopId,
+            planId: plan.id,
+        },
+    });
+}
+
+export async function confirmPagarmeClientPixOrderService(params: any, currentUser: any) {
+    const order = await getPagarmeOrderStatusService(String(params.orderId));
+    const metadata = (order.raw as any)?.metadata || {};
+    const userId = String(currentUser?.id || '');
+    const barbershopId = String(currentUser?.barbershopId || '');
+
+    if (
+        metadata.type !== 'client_subscription_pix' ||
+        String(metadata.userId) !== userId ||
+        String(metadata.barbershopId) !== barbershopId ||
+        String(metadata.planId) !== String(params.planId)
+    ) {
+        throw new Error('Pagamento PIX nao pertence a esta assinatura.');
+    }
+    if (!isPaidOrder(order)) {
+        return { paid: false, status: order.status, chargeStatus: order.chargeStatus };
+    }
+
+    const subscription = await activatePaidPixSubscription({
+        planId: String(params.planId),
+        orderId: String(params.orderId),
+        userId,
+        barbershopId,
+    });
+    return { paid: true, subscription };
+}
+
+export async function syncClientPixSubscriptionWebhook(order: any, metadata: any) {
+    if (String(metadata?.type || '') !== 'client_subscription_pix' || !isPaidOrder(order)) {
+        return { handled: false };
+    }
+    await activatePaidPixSubscription({
+        planId: String(metadata.planId),
+        orderId: String(order?.id || ''),
+        userId: String(metadata.userId),
+        barbershopId: String(metadata.barbershopId),
+    });
+    return { handled: true };
 }
