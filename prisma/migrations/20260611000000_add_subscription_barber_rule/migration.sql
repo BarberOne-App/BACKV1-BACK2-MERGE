@@ -1,0 +1,1 @@
+-- Migration criada sem alterações (pasta estava vazia acidentalmente)
