@@ -1,6 +1,10 @@
 // controllers/pagarmeSubscriptionController.ts
 import { Request, Response, NextFunction } from 'express';
-import { createPagarmeClientSubscriptionService } from '../services/pagarmeSubscriptionService.js';
+import {
+  confirmPagarmeClientPixOrderService,
+  createPagarmeClientPixOrderService,
+  createPagarmeClientSubscriptionService,
+} from '../services/pagarmeSubscriptionService.js';
 import {
   createPagarmeBarbershopPlatformSubscriptionService,
   getBarbershopPlatformSubscriptionService,
@@ -16,6 +20,24 @@ export async function createPagarmeClientSubscriptionController(
   try {
     const result = await createPagarmeClientSubscriptionService(req.body, req.user);
     return res.status(201).json(result);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function createPagarmeClientPixOrderController(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await createPagarmeClientPixOrderService(req.body, req.user);
+    return res.status(201).json(result);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function confirmPagarmeClientPixOrderController(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await confirmPagarmeClientPixOrderService(req.body, req.user);
+    return res.status(200).json(result);
   } catch (error) {
     return next(error);
   }

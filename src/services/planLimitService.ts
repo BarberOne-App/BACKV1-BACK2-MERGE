@@ -228,6 +228,7 @@
 
 import prisma from "../database/database.js";
 import { forbidden } from "../errors/index.js";
+import { expirePlatformSubscription, getStartOfToday } from "./subscriptionExpirationService.js";
 
 const TRIAL_PERIOD_DAYS = Number(process.env.TRIAL_PERIOD_DAYS || 14);
 
@@ -238,6 +239,8 @@ export interface PlanLimitValidation {
 }
 
 export async function getActivePlatformSubscription(barbershopId: string) {
+  await expirePlatformSubscription(barbershopId);
+
   return prisma.barbershop_platform_subscriptions.findFirst({
     where: {
       barbershop_id: barbershopId,
@@ -245,6 +248,10 @@ export async function getActivePlatformSubscription(barbershopId: string) {
         in: ['active', 'future', 'trialing', 'pending'],
       },
       canceled_at: null,
+      OR: [
+        { next_billing_date: null },
+        { next_billing_date: { gte: getStartOfToday() } },
+      ],
     },
     include: {
       platform_plan: {

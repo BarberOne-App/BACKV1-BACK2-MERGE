@@ -13,6 +13,7 @@ import {
 } from "../repository/subscriptionRepository.js";
 import { findPlanByIdInBarbershop } from "../repository/subscriptionPlanRepository.js";
 import { findBarberByIdInBarbershop } from "../repository/barberRepository.js";
+import { expireClientSubscriptions } from "./subscriptionExpirationService.js";
 
 /* ────────── helpers ────────── */
 
@@ -132,6 +133,11 @@ export async function listSubscriptionsService(params: {
   const page = params.query.page ?? 1;
   const limit = params.query.limit ?? 20;
 
+  await expireClientSubscriptions({
+    barbershopId: params.barbershopId,
+    userId,
+  });
+
   const { items, total } = await listSubscriptionsInBarbershop({
     barbershopId: params.barbershopId,
     userId,
@@ -150,6 +156,8 @@ export async function getSubscriptionByIdService(params: {
   barbershopId: string;
   subscriptionId: string;
 }) {
+  await expireClientSubscriptions({ barbershopId: params.barbershopId });
+
   const sub = await findSubscriptionByIdInBarbershop(params.barbershopId, params.subscriptionId);
   if (!sub) throw notFound("Assinatura não encontrada");
   return serialize(sub);
@@ -175,6 +183,11 @@ export async function createSubscriptionService(params: {
       ? params.actorId
       : params.data.userId ?? params.actorId;
 
+  await expireClientSubscriptions({
+    barbershopId: params.barbershopId,
+    userId,
+  });
+
   // Verifica assinatura ativa (lógica de negócio)
   const existing = await findActiveSubscriptionByUser(params.barbershopId, userId);
   if (existing) {
@@ -197,13 +210,23 @@ export async function createSubscriptionService(params: {
   const plan = await findPlanByIdInBarbershop(params.barbershopId, params.data.planId);
   if (!plan) throw notFound("Plano não encontrado");
 
+  const planPaymentMethod = (plan as any).payment_method as string;
+
+  if (planPaymentMethod === "credito" || planPaymentMethod === "debito") {
+    throw badRequest("Este plano exige pagamento no cartao. Finalize a assinatura pelo checkout com cartao.");
+  }
+
+  if (params.data.paymentMethod && params.data.paymentMethod !== planPaymentMethod) {
+    throw badRequest("A forma de pagamento deve ser a configurada pela barbearia para este plano.");
+  }
+
   // 3. Criar subscription + primeiro ciclo
   const created = await createSubscriptionTx({
     barbershopId: params.barbershopId,
     userId,
     planId: params.data.planId,
-    amount: params.data.amount,
-    paymentMethod: params.data.paymentMethod,
+    amount: decimalToNumber(plan.price),
+    paymentMethod: planPaymentMethod,
     isRecurring: params.data.isRecurring,
     autoRenewal: params.data.autoRenewal,
     cutsPerMonth: plan.cuts_per_month,
@@ -273,6 +296,14 @@ export async function renewSubscriptionService(params: {
   if (!sub) throw notFound("Assinatura não encontrada");
 
   const cutsPerMonth = sub.subscription_plans?.cuts_per_month ?? 0;
+
+  const configuredPaymentMethod = (sub.subscription_plans as any)?.payment_method;
+  if (configuredPaymentMethod === "credito" || configuredPaymentMethod === "debito") {
+    if (sub.payment_method !== configuredPaymentMethod || !sub.pagarme_subscription_id) {
+      throw badRequest("A renovacao deste plano exige pagamento no cartao pelo checkout da assinatura.");
+    }
+    throw badRequest("Planos pagos no cartao sao renovados automaticamente pelo provedor de pagamento.");
+  }
 
   const renewed = await renewSubscriptionTx(
     params.barbershopId,

@@ -235,6 +235,7 @@ model subscription_plans {
   name           String
   price          Decimal @db.Decimal(12, 2)
   cuts_per_month Int     @default(0)
+  payment_method payment_method @default(credito)
   // role limits: null => ilimitado
   max_barbers        Int?
   max_receptionists  Int?
