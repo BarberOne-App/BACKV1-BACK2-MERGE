@@ -144,12 +144,15 @@ export async function loginService(params: { email: string; password: string }) 
 
   const shop = user.current_barbershop;
   const isSuperAdmin = String(user.role) === "super_admin";
+  const isBarbershopAdmin = String(user.role) === "admin";
 
   if (!shop && !isSuperAdmin) {
     throw notFound("Usuário não vinculado a nenhuma barbearia");
   }
 
-  if (!isSuperAdmin && shop) {
+  // A assinatura da plataforma pertence ao administrador da barbearia.
+  // Clientes e demais colaboradores nao devem ser bloqueados por essa cobranca.
+  if (isBarbershopAdmin && shop) {
     await expirePlatformSubscription(shop.id);
 
     const now = new Date();
