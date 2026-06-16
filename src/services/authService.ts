@@ -42,6 +42,10 @@ function needsProfileCompletion(user: {
   return !user.cpf || !user.phone || !user.birth_date || !user.password_hash || !user.current_barbershop_id;
 }
 
+function normalizeSubscriptionBarberRule(value: unknown): "fixed" | "free_choice" {
+  return value === "free_choice" ? "free_choice" : "fixed";
+}
+
 function mapAuthUser(user: any) {
   return {
     id: user.id,
@@ -317,10 +321,12 @@ export async function registerBarbershopService(params: {
   adminEmail: string;
   adminPhone?: string;
   password: string;
-  selectedPlan: "basic" | "premium";
+  selectedPlan: string;
+  subscriptionBarberRule?: string;
 }) {
   const adminEmail = normalizeEmail(params.adminEmail);
   const slug = slugify(params.slug?.trim() || params.barbershopName);
+  const subscriptionBarberRule = normalizeSubscriptionBarberRule(params.subscriptionBarberRule);
 
   const passwordHash = await bcrypt.hash(params.password, rounds());
 
@@ -356,6 +362,16 @@ export async function registerBarbershopService(params: {
         tx
       );
 
+      await tx.barbershop_settings.upsert({
+        where: { barbershop_id: shop.id },
+        update: { subscription_barber_rule: subscriptionBarberRule },
+        create: {
+          barbershop_id: shop.id,
+          hidden_booking_payment_methods: [],
+          subscription_barber_rule: subscriptionBarberRule,
+        },
+      });
+
       return { shop, user };
     });
 
@@ -369,6 +385,7 @@ export async function registerBarbershopService(params: {
     return {
       ...tokens,
       selectedPlan: params.selectedPlan ?? null,
+      subscriptionBarberRule,
       barbershop: mapAuthBarbershop(result.shop),
       user: {
         id: result.user.id,

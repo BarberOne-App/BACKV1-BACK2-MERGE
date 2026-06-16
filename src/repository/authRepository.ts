@@ -32,7 +32,7 @@ export async function createBarbershop(
     cnpj?: string | null;
     phone?: string | null;
     email?: string | null;
-    selectedPlan: "basic" | "premium";
+    selectedPlan: string;
   },
   tx?: Prisma.TransactionClient
 ) {
