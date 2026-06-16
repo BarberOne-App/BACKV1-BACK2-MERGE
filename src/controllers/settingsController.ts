@@ -41,6 +41,7 @@ export async function upsertSettings(req: Request, res: Response) {
         termsDocumentUrl: req.body?.termsDocumentUrl,
         termsDocumentName: req.body?.termsDocumentName,
         hiddenBookingPaymentMethods: req.body?.hiddenBookingPaymentMethods,
+        subscriptionBarberRule: req.body?.subscriptionBarberRule,
     });
     return res.status(200).send(result);
 }
