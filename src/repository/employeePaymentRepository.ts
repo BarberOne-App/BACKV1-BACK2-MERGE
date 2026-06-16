@@ -2,8 +2,8 @@ import prisma from "../database/database.js";
 import type { Prisma } from "@prisma/client";
 
 const EMPLOYEE_PAYMENT_INCLUDE = {
-  employee: { select: { id: true, name: true } },
-  creator: { select: { id: true, name: true } },
+  users_employee_payments_employee_idTousers: { select: { id: true, name: true } },
+  users_employee_payments_paid_byTousers: { select: { id: true, name: true } },
 } as const;
 
 /* ───── LIST ───── */

@@ -77,7 +77,7 @@ function mapAuthBarbershop(barbershop: any) {
 }
 
 function buildAuthResponse(user: any, created = false) {
-  const barbershop = mapAuthBarbershop(user.current_barbershop);
+  const barbershop = mapAuthBarbershop(user.barbershops);
   const tokens = generateTokenPair({
     userId: user.id,
     barbershopId: barbershop?.id ?? null,
@@ -132,7 +132,7 @@ async function findGoogleAuthUser(email: string, googleId: string) {
       ],
     },
     include: {
-      current_barbershop: { select: { id: true, name: true, slug: true, status: true, logo_url: true } },
+      barbershops: { select: { id: true, name: true, slug: true, status: true, logo_url: true } },
     },
   });
 }
@@ -146,7 +146,7 @@ export async function loginService(params: { email: string; password: string }) 
   const ok = await bcrypt.compare(params.password, user.password_hash);
   if (!ok) throw unauthorized("Credenciais inválidas");
 
-  const shop = user.current_barbershop;
+  const shop = user.barbershops;
   const isSuperAdmin = String(user.role) === "super_admin";
   const isBarbershopAdmin = String(user.role) === "admin";
 
@@ -254,7 +254,7 @@ export async function googleAuthService(params: {
         ...updateData,
         ...(shop
           ? {
-            barbershop_links: {
+            user_barbershops: {
               connectOrCreate: {
                 where: {
                   user_id_barbershop_id: {
@@ -269,7 +269,7 @@ export async function googleAuthService(params: {
           : {}),
       },
       include: {
-        current_barbershop: { select: { id: true, name: true, slug: true, status: true, logo_url: true } },
+        barbershops: { select: { id: true, name: true, slug: true, status: true, logo_url: true } },
       },
     });
 
@@ -297,14 +297,14 @@ export async function googleAuthService(params: {
       current_barbershop_id: shop?.id ?? null,
       ...(shop
         ? {
-          barbershop_links: {
+          user_barbershops: {
             create: { barbershop_id: shop.id },
           },
         }
         : {}),
     },
     include: {
-      current_barbershop: { select: { id: true, name: true, slug: true, status: true, logo_url: true } },
+      barbershops: { select: { id: true, name: true, slug: true, status: true, logo_url: true } },
     },
   });
 
@@ -609,7 +609,7 @@ export async function meService(userId: string) {
     photoUrl: user.photo_url,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
-    barbershop: mapAuthBarbershop(user.current_barbershop),
+    barbershop: mapAuthBarbershop(user.barbershops),
     barberProfile: user.barbers ?? null,
     subscription: activeSubscription
       ? {
@@ -671,7 +671,7 @@ export async function switchBarbershopService(params: {
     const hasAccess = await prisma.users.findFirst({
       where: {
         id: params.userId,
-        barbershop_links: {
+        user_barbershops: {
           some: {
             barbershop_id: targetBarbershopId,
           },
@@ -712,7 +712,7 @@ export async function switchBarbershopService(params: {
   return {
     token,
     refreshToken,
-    barbershop: mapAuthBarbershop(updatedUser.current_barbershop),
+    barbershop: mapAuthBarbershop(updatedUser.barbershops),
     user: {
       id: updatedUser.id,
       name: updatedUser.name,

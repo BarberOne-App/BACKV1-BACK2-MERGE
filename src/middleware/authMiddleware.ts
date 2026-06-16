@@ -36,7 +36,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       name: true,
       email: true,
       permissions: true,
-      current_barbershop: {
+      barbershops: {
         select: {
           status: true,
         },
@@ -58,7 +58,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     }
   }
 
-  const shopStatus = String(user.current_barbershop?.status || "");
+  const shopStatus = String(user.barbershops?.status || "");
 
   if (!isSuperAdmin && (shopStatus === "blocked" || shopStatus === "inactive")) {
     return next(forbidden("Acesso indisponível para esta barbearia"));

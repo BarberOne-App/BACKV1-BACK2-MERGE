@@ -139,7 +139,7 @@ export async function createUserInBarbershop(data: {
       password_hash: data.passwordHash,
       permissions: data.permissions ?? undefined,
       photo_url: data.photoUrl ?? null,
-      barbershop_links: {
+      user_barbershops: {
         create: { barbershop_id: data.barbershopId },
       },
     },

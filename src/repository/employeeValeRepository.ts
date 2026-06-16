@@ -6,8 +6,8 @@ export async function listEmployeeVales(barbershopId: string) {
     where: { barbershop_id: barbershopId },
     orderBy: { created_at: "desc" },
     include: {
-      employee: { select: { id: true, name: true } },
-      creator: { select: { id: true, name: true } },
+      users_employee_vales_employee_idTousers: { select: { id: true, name: true } },
+      users_employee_vales_created_byTousers: { select: { id: true, name: true } },
     },
   });
 }
@@ -29,8 +29,8 @@ export async function listEmployeeValesByPeriod(params: {
     },
     orderBy: { date: "desc" },
     include: {
-      employee: { select: { id: true, name: true } },
-      creator: { select: { id: true, name: true } },
+      users_employee_vales_employee_idTousers: { select: { id: true, name: true } },
+      users_employee_vales_created_byTousers: { select: { id: true, name: true } },
     },
   });
 }
@@ -61,8 +61,8 @@ export async function createEmployeeVale(data: {
       barbershop_id: data.barbershopId,
     },
     include: {
-      employee: { select: { id: true, name: true } },
-      creator: { select: { id: true, name: true } },
+      users_employee_vales_employee_idTousers: { select: { id: true, name: true } },
+      users_employee_vales_created_byTousers: { select: { id: true, name: true } },
     },
   });
 }
