@@ -53,7 +53,7 @@ export async function createBarbershop(
 export async function findUserByEmailInBarbershop(barbershopId: string, email: string, tx?: Prisma.TransactionClient) {
   const db = dbClient(tx);
   return db.users.findFirst({
-    where: { email, barbershop_links: { some: { barbershop_id: barbershopId } } },
+    where: { email, user_barbershops: { some: { barbershop_id: barbershopId } } },
   });
 }
 
@@ -77,7 +77,7 @@ export async function findUserByEmail(email: string, tx?: Prisma.TransactionClie
   return db.users.findFirst({
     where: { email },
     include: {
-      current_barbershop: {
+      barbershops: {
         select: {
           id: true,
           name: true,
@@ -118,7 +118,7 @@ export async function createUser(
       is_admin: data.isAdmin,
       password_hash: data.passwordHash,
       current_barbershop_id: data.barbershopId,
-      barbershop_links: {
+      user_barbershops: {
         create: {
           barbershop_id: data.barbershopId,
         },
@@ -172,7 +172,7 @@ export async function findUserById(userId: string, tx?: Prisma.TransactionClient
       created_at: true,
       updated_at: true,
       current_barbershop_id: true,
-      current_barbershop: {
+      barbershops: {
           select: { id: true, name: true, slug: true, logo_url: true },
       },
       barbers: {
