@@ -254,7 +254,7 @@ export async function getActivePlatformSubscription(barbershopId: string) {
       ],
     },
     include: {
-      platform_plan: {
+      platform_plans: {
         select: {
           id: true,
           name: true,
@@ -263,7 +263,7 @@ export async function getActivePlatformSubscription(barbershopId: string) {
           max_receptionists: true,
         },
       },
-    } as any,
+    },
     orderBy: { created_at: 'desc' },
   });
 }
@@ -358,12 +358,6 @@ export async function countUsersByRoleInBarbershop(
   barbershopId: string,
   role: string
 ): Promise<number> {
-  if (role === "barber") {
-    return prisma.barbers.count({
-      where: { barbershop_id: barbershopId },
-    });
-  }
-
   return prisma.users.count({
     where: {
       current_barbershop_id: barbershopId,
@@ -414,7 +408,7 @@ export async function validatePlanUserLimit(
     );
   }
 
-  const platformPlan = (platformSubscription?.platform_plan ?? trialPlatformPlan?.platformPlan) as any;
+  const platformPlan = (platformSubscription?.platform_plans ?? trialPlatformPlan?.platformPlan) as any;
   const planName =
     platformPlan?.name ??
     platformSubscription?.selected_plan ??
@@ -426,7 +420,7 @@ export async function validatePlanUserLimit(
       id: platformSubscription.id,
       status: platformSubscription.status,
       selected_plan: platformSubscription.selected_plan,
-      platform_plan: platformSubscription.platform_plan,
+      platform_plans: platformSubscription.platform_plans,
     });
   } else if (trialPlatformPlan) {
     console.log("Plano liberado pelo período de teste encontrado:", {
