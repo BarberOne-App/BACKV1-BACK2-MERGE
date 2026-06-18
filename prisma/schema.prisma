@@ -30,6 +30,7 @@ model appointment_services {
   unit_price       Decimal      @db.Decimal(12, 2)
   duration_minutes Int
   quantity         Int          @default(1)
+  service_points   Int          @default(1)
   created_at       DateTime     @default(now()) @db.Timestamptz(6)
   appointments     appointments @relation(fields: [appointment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   services         services     @relation(fields: [service_id], references: [id], onUpdate: NoAction)
@@ -161,6 +162,7 @@ model barbershop_settings {
   hidden_booking_payment_methods String[]    @default([])
   slot_interval_minutes          Int         @default(30)
   subscription_barber_rule       String      @default("fixed")
+  commission_rule_type           String      @default("FIXED_BARBER")
   barbershops                    barbershops @relation(fields: [barbershop_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_settings_barbershop")
 
   @@index([barbershop_id], map: "idx_settings_barbershop_id")
@@ -425,6 +427,7 @@ model services {
   updated_at           DateTime               @default(now()) @db.Timestamptz(6)
   barbershop_id        String                 @db.Uuid
   comission_percent    Decimal?               @db.Decimal(5, 2)
+  service_points       Int                    @default(1)
   appointment_services appointment_services[]
   barber_services      barber_services[]
   barbershops          barbershops            @relation(fields: [barbershop_id], references: [id], onUpdate: NoAction, map: "fk_services_barbershop")

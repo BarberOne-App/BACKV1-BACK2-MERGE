@@ -7,7 +7,7 @@ const SUB_INCLUDE = {
       subscription_plan_features: { orderBy: { sort_order: "asc" as const } },
     },
   },
-  monthly_barber: { select: { id: true, display_name: true, photo_url: true } },
+  barbers: { select: { id: true, display_name: true, photo_url: true } },
   subscription_cycles: {
     orderBy: { period_start: "desc" as const },
     take: 1,

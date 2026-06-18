@@ -137,14 +137,68 @@ async function findGoogleAuthUser(email: string, googleId: string) {
   });
 }
 
-export async function loginService(params: { email: string; password: string }) {
+export async function loginService(params: { email: string; password: string; barbershopId?: string }) {
   const email = normalizeEmail(params.email);
 
-  const user = await findUserByEmail(email);
+  let user;
+  if (params.barbershopId) {
+    user = await prisma.users.findFirst({
+      where: {
+        email,
+        user_barbershops: { some: { barbershop_id: params.barbershopId } }
+      },
+      include: {
+        barbershops: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logo_url: true,
+            status: true,
+            created_at: true,
+            platform_subscription_status: true,
+          },
+        },
+      },
+    });
+  }
+
+  if (!user) {
+    user = await findUserByEmail(email);
+  }
+
   if (!user) throw unauthorized("Credenciais inválidas");
 
   const ok = await bcrypt.compare(params.password, user.password_hash);
   if (!ok) throw unauthorized("Credenciais inválidas");
+
+  if (params.barbershopId && user.current_barbershop_id !== params.barbershopId) {
+    const hasAccess = await prisma.users.findFirst({
+      where: {
+        id: user.id,
+        user_barbershops: { some: { barbershop_id: params.barbershopId } }
+      }
+    });
+    if (hasAccess) {
+      user = await prisma.users.update({
+        where: { id: user.id },
+        data: { current_barbershop_id: params.barbershopId },
+        include: {
+          barbershops: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              logo_url: true,
+              status: true,
+              created_at: true,
+              platform_subscription_status: true,
+            },
+          },
+        },
+      });
+    }
+  }
 
   const shop = user.barbershops;
   const isSuperAdmin = String(user.role) === "super_admin";
@@ -245,8 +299,7 @@ export async function googleAuthService(params: {
     if (profileData.birthDate && !existingUser.birth_date) updateData.birth_date = new Date(profileData.birthDate);
     if (password) updateData.password_hash = await bcrypt.hash(password, rounds());
 
-    const linkShop = shop && !existingUser.current_barbershop_id;
-    if (linkShop) updateData.current_barbershop_id = shop.id;
+    if (shop) updateData.current_barbershop_id = shop.id;
 
     const updated = await prisma.users.update({
       where: { id: existingUser.id },

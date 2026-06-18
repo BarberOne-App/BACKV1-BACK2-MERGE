@@ -9,7 +9,8 @@ import {
 } from "../services/settingService.js";
 
 export async function getBarbershopProfile(req: Request, res: Response) {
-    const result = await getBarbershopProfileService(req.user!.barbershopId);
+    const barbershopId = (req.query.barbershopId as string) || req.user!.barbershopId;
+    const result = await getBarbershopProfileService(barbershopId);
     return res.status(200).send(result);
 }
 
@@ -42,6 +43,7 @@ export async function upsertSettings(req: Request, res: Response) {
         termsDocumentName: req.body?.termsDocumentName,
         hiddenBookingPaymentMethods: req.body?.hiddenBookingPaymentMethods,
         subscriptionBarberRule: req.body?.subscriptionBarberRule,
+        commissionRuleType: req.body?.commissionRuleType ?? req.body?.commission_rule_type,
     });
     return res.status(200).send(result);
 }

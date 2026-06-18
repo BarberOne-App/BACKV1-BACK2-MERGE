@@ -77,8 +77,8 @@ function serialize(sub: any) {
     daysOverdue: sub.days_overdue,
     overdueNotificationSent: sub.overdue_notification_sent,
     monthlyBarberId: sub.monthly_barber_id,
-    monthlyBarber: sub.monthly_barber
-      ? { id: sub.monthly_barber.id, displayName: sub.monthly_barber.display_name, photoUrl: sub.monthly_barber.photo_url }
+    monthlyBarber: sub.barbers
+      ? { id: sub.barbers.id, displayName: sub.barbers.display_name, photoUrl: sub.barbers.photo_url }
       : null,
     monthlyBarberSetAt: sub.monthly_barber_set_at,
     currentCycle: cycle

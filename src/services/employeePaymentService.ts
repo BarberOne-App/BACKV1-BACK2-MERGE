@@ -9,7 +9,7 @@ import {
   listPayrollEmployees,
 } from "../repository/employeePaymentRepository.js";
 import { listEmployeeValesByPeriod } from "../repository/employeeValeRepository.js";
-import { getHomeInfoByBarbershop } from "../repository/settingRepository.js";
+import { getHomeInfoByBarbershop, getSettingsByBarbershop } from "../repository/settingRepository.js";
 import {
   calculateCommission,
   resolveServiceCommissionType,
@@ -115,15 +115,102 @@ function serializeVale(vale: any) {
   };
 }
 
-function buildCommissionByEmployee(appointments: any[]) {
+type CommissionRuleType = "FIXED_BARBER" | "FREE_BARBER";
+
+type CommissionInfo = {
+  commissionAmount: number;
+  revenue: number;
+  services: number;
+  appointments: number;
+  regularCommissionAmount: number;
+  subscriptionPoolCommission: number;
+  subscriptionRevenue: number;
+  subscriptionAppointments: number;
+  subscriptionPoints: number;
+  subscriptionParticipationPercent: number;
+};
+
+type SubscriptionPoolDistribution = {
+  employeeId: string;
+  barberId: string | null;
+  barberName: string | null;
+  appointments: number;
+  points: number;
+  participationPercent: number;
+  commissionAmount: number;
+  revenue: number;
+};
+
+function normalizeCommissionRuleType(value: unknown): CommissionRuleType {
+  return String(value || "").trim().toUpperCase() === "FREE_BARBER"
+    ? "FREE_BARBER"
+    : "FIXED_BARBER";
+}
+
+function emptyCommissionInfo(): CommissionInfo {
+  return {
+    commissionAmount: 0,
+    revenue: 0,
+    services: 0,
+    appointments: 0,
+    regularCommissionAmount: 0,
+    subscriptionPoolCommission: 0,
+    subscriptionRevenue: 0,
+    subscriptionAppointments: 0,
+    subscriptionPoints: 0,
+    subscriptionParticipationPercent: 0,
+  };
+}
+
+function buildCommissionByEmployee(
+  appointments: any[],
+  commissionRuleType: CommissionRuleType,
+  employees?: any[],
+) {
   const totals = new Map<
     string,
-    { commissionAmount: number; revenue: number; services: number; appointments: number }
+    CommissionInfo
   >();
+  const subscriptionAttendanceByEmployee = new Map<
+    string,
+    {
+      employeeId: string;
+      barberId: string | null;
+      barberName: string | null;
+      appointments: number;
+      points: number;
+      revenue: number;
+    }
+  >();
+
+  if (employees) {
+    for (const emp of employees) {
+      const barber = emp.barbers;
+      totals.set(emp.id, emptyCommissionInfo());
+      if (commissionRuleType === "FREE_BARBER") {
+        subscriptionAttendanceByEmployee.set(emp.id, {
+          employeeId: emp.id,
+          barberId: barber?.id ?? null,
+          barberName: barber?.display_name ?? emp.name,
+          appointments: 0,
+          points: 0,
+          revenue: 0,
+        });
+      }
+    }
+  }
+
+  const subscriptionAppointmentIdsByEmployee = new Map<string, Set<string>>();
+  let subscriptionPoolAmount = 0;
+  let subscriptionPoolRevenue = 0;
+  let subscriptionPoolAppointments = 0;
+  let subscriptionPoolPoints = 0;
 
   console.log("[employee-payroll] commission appointments loaded", {
     appointmentsCount: appointments.length,
     appointmentIds: appointments.map((appointment) => appointment.id),
+    commissionRuleType,
+    employeesCount: employees?.length ?? 0,
   });
 
   for (const appointment of appointments) {
@@ -137,23 +224,34 @@ function buildCommissionByEmployee(appointments: any[]) {
       continue;
     }
 
-    const current = totals.get(employeeId) ?? {
-      commissionAmount: 0,
-      revenue: 0,
-      services: 0,
-      appointments: 0,
-    };
+    const current = totals.get(employeeId) ?? emptyCommissionInfo();
     current.appointments += 1;
+    let appointmentHasSubscriptionService = false;
+    let appointmentSubscriptionRevenue = 0;
+    let appointmentSubscriptionPoints = 0;
 
     for (const service of appointment.appointment_services ?? []) {
       const unitPrice = Number(service.unit_price) || 0;
       const quantity = Number(service.quantity) || 1;
       const amount = unitPrice * quantity;
+      const configuredPoints = Number(
+        service.service_points ?? service.services?.service_points ?? 1,
+      );
+      const servicePoints =
+        Number.isFinite(configuredPoints) && configuredPoints > 0
+          ? configuredPoints
+          : 1;
+      const totalServicePoints = servicePoints * quantity;
+      const isApptSubscription = appointment.payment_transactions?.some(
+        (t: any) => t.method === "subscription"
+      ) ?? false;
+      const coveredByPlan = isApptSubscription || service.services?.covered_by_plan === true;
+
       const serviceCommissionPercent = decimalToNumber(service.services?.comission_percent);
       const barberCommissionPercent = decimalToNumber(appointment.barbers?.commission_percent);
       const commissionPercent = serviceCommissionPercent ?? barberCommissionPercent;
       const commissionType = resolveServiceCommissionType({
-        coveredByPlan: service.services?.covered_by_plan,
+        coveredByPlan: coveredByPlan,
         commissionPercent,
         serviceName: service.service_name,
       });
@@ -164,9 +262,6 @@ function buildCommissionByEmployee(appointments: any[]) {
       });
 
       console.log("[employee-payroll] commission service item", {
-        appointmentId: appointment.id,
-        appointmentStartAt: appointment.start_at,
-        employeeId,
         barberId: appointment.barber_id,
         barberName: appointment.barbers?.display_name,
         serviceId: service.id,
@@ -179,11 +274,56 @@ function buildCommissionByEmployee(appointments: any[]) {
         effectiveCommissionPercent: commissionPercent,
         fallbackCommissionType: commissionType,
         commissionAmount,
+        coveredByPlan,
+        servicePoints,
+        totalServicePoints,
       });
 
       current.revenue += amount;
-      current.commissionAmount += commissionAmount;
       current.services += quantity;
+
+      if (commissionRuleType === "FREE_BARBER" && coveredByPlan) {
+        appointmentHasSubscriptionService = true;
+        appointmentSubscriptionRevenue += amount;
+        appointmentSubscriptionPoints += totalServicePoints;
+        subscriptionPoolRevenue += amount;
+        subscriptionPoolAmount += commissionAmount;
+        subscriptionPoolPoints += totalServicePoints;
+      } else {
+        current.commissionAmount += commissionAmount;
+        current.regularCommissionAmount += commissionAmount;
+      }
+    }
+
+    if (commissionRuleType === "FREE_BARBER" && appointmentHasSubscriptionService) {
+      let appointmentIds = subscriptionAppointmentIdsByEmployee.get(employeeId);
+      if (!appointmentIds) {
+        appointmentIds = new Set<string>();
+        subscriptionAppointmentIdsByEmployee.set(employeeId, appointmentIds);
+      }
+
+      if (!appointmentIds.has(appointment.id)) {
+        appointmentIds.add(appointment.id);
+        subscriptionPoolAppointments += 1;
+      }
+
+      const currentSubscription = subscriptionAttendanceByEmployee.get(employeeId) ?? {
+        employeeId,
+        barberId: appointment.barber_id ?? null,
+        barberName: appointment.barbers?.display_name ?? null,
+        appointments: 0,
+        points: 0,
+        revenue: 0,
+      };
+
+      currentSubscription.appointments = appointmentIds.size;
+      currentSubscription.points += appointmentSubscriptionPoints;
+      currentSubscription.revenue += appointmentSubscriptionRevenue;
+      subscriptionAttendanceByEmployee.set(employeeId, currentSubscription);
+
+      current.subscriptionRevenue += appointmentSubscriptionRevenue;
+      current.subscriptionAppointments = appointmentIds.size;
+      current.subscriptionPoints += appointmentSubscriptionPoints;
     }
 
     console.log("[employee-payroll] employee commission running total", {
@@ -198,6 +338,36 @@ function buildCommissionByEmployee(appointments: any[]) {
     totals.set(employeeId, current);
   }
 
+  const distributions: SubscriptionPoolDistribution[] = [];
+
+  if (commissionRuleType === "FREE_BARBER") {
+    for (const entry of subscriptionAttendanceByEmployee.values()) {
+      const participation = subscriptionPoolPoints > 0 ? entry.points / subscriptionPoolPoints : 0;
+      const commissionAmount = roundMoney(subscriptionPoolAmount * participation);
+      const participationPercent = roundMoney(participation * 100);
+      const current = totals.get(entry.employeeId) ?? emptyCommissionInfo();
+
+      current.commissionAmount += commissionAmount;
+      current.subscriptionPoolCommission = commissionAmount;
+      current.subscriptionParticipationPercent = participationPercent;
+      current.subscriptionAppointments = entry.appointments;
+      current.subscriptionPoints = entry.points;
+      current.subscriptionRevenue = roundMoney(entry.revenue);
+      totals.set(entry.employeeId, current);
+
+      distributions.push({
+        employeeId: entry.employeeId,
+        barberId: entry.barberId,
+        barberName: entry.barberName,
+        appointments: entry.appointments,
+        points: entry.points,
+        participationPercent,
+        commissionAmount,
+        revenue: roundMoney(entry.revenue),
+      });
+    }
+  }
+
   console.log(
     "[employee-payroll] commission totals by employee",
     Array.from(totals.entries()).map(([employeeId, total]) => ({
@@ -206,10 +376,25 @@ function buildCommissionByEmployee(appointments: any[]) {
       commissionAmount: roundMoney(total.commissionAmount),
       services: total.services,
       appointments: total.appointments,
+      regularCommissionAmount: roundMoney(total.regularCommissionAmount),
+      subscriptionPoolCommission: roundMoney(total.subscriptionPoolCommission),
+      subscriptionAppointments: total.subscriptionAppointments,
+      subscriptionPoints: total.subscriptionPoints,
+      subscriptionParticipationPercent: total.subscriptionParticipationPercent,
     }))
   );
 
-  return totals;
+  return {
+    totals,
+    subscriptionPool: {
+      ruleType: commissionRuleType,
+      revenue: roundMoney(subscriptionPoolRevenue),
+      commissionPool: roundMoney(subscriptionPoolAmount),
+      totalAppointments: subscriptionPoolAppointments,
+      totalPoints: subscriptionPoolPoints,
+      distributions: distributions.sort((a, b) => b.commissionAmount - a.commissionAmount),
+    },
+  };
 }
 
 function isExtraEmployeePayment(p: any): boolean {
@@ -329,6 +514,12 @@ export async function getEmployeePayrollSummaryService(params: {
     throw badRequest("Periodo invalido");
   }
 
+  const settings = await getSettingsByBarbershop(params.barbershopId);
+  const commissionRuleType =
+    (settings as any)?.subscription_barber_rule === "free_choice"
+      ? "FREE_BARBER"
+      : "FIXED_BARBER";
+
   const [employees, appointments, vales, payments, paymentHistory] = await Promise.all([
     listPayrollEmployees({
       barbershopId: params.barbershopId,
@@ -339,7 +530,7 @@ export async function getEmployeePayrollSummaryService(params: {
       barbershopId: params.barbershopId,
       periodStart: periodStartDate,
       periodEnd: periodEndDate,
-      employeeId: params.employeeId,
+      employeeId: commissionRuleType === "FREE_BARBER" ? undefined : params.employeeId,
     }),
     listEmployeeValesByPeriod({
       barbershopId: params.barbershopId,
@@ -370,7 +561,8 @@ export async function getEmployeePayrollSummaryService(params: {
     paymentHistoryCount: paymentHistory.length,
   });
 
-  const commissionByEmployee = buildCommissionByEmployee(appointments);
+  const commissionSummary = buildCommissionByEmployee(appointments, commissionRuleType, employees);
+  const commissionByEmployee = commissionSummary.totals;
   const valesByEmployee = new Map<string, any[]>();
   for (const vale of vales) {
     const list = valesByEmployee.get(vale.employee_id) ?? [];
@@ -398,10 +590,7 @@ export async function getEmployeePayrollSummaryService(params: {
     const employeePayments = paymentsByEmployee.get(employee.id) ?? [];
     const employeePaymentHistory = paymentHistoryByEmployee.get(employee.id) ?? [];
     const commissionInfo = commissionByEmployee.get(employee.id) ?? {
-      commissionAmount: 0,
-      revenue: 0,
-      services: 0,
-      appointments: 0,
+      ...emptyCommissionInfo(),
     };
     const baseSalary = Number(barber?.salary ?? employee.salary ?? 0);
     const commission = roundMoney(commissionInfo.commissionAmount);
@@ -490,6 +679,12 @@ export async function getEmployeePayrollSummaryService(params: {
       folhaPago,
       appointmentsCount: commissionInfo.appointments,
       servicesCount: commissionInfo.services,
+      regularCommission: roundMoney(commissionInfo.regularCommissionAmount),
+      subscriptionPoolCommission: roundMoney(commissionInfo.subscriptionPoolCommission),
+      subscriptionRevenue: roundMoney(commissionInfo.subscriptionRevenue),
+      subscriptionAppointmentsCount: commissionInfo.subscriptionAppointments,
+      subscriptionPoints: commissionInfo.subscriptionPoints,
+      subscriptionParticipationPercent: commissionInfo.subscriptionParticipationPercent,
       vales: employeeVales.map(serializeVale),
       payments: employeePayments.map(serialize),
       paymentHistory: employeePaymentHistory.map(serialize),
@@ -538,6 +733,8 @@ export async function getEmployeePayrollSummaryService(params: {
   return {
     periodStart: params.periodStart,
     periodEnd: params.periodEnd,
+    commissionRuleType,
+    subscriptionCommissionPool: commissionSummary.subscriptionPool,
     totals,
     items: filteredItems,
   };

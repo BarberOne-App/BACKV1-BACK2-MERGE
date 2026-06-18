@@ -27,6 +27,7 @@ import employeePaymentRouter from "./routes/employeePaymentRouter.js";
 import superAdminRouter from "./routes/superAdminRouter.js";
 import dashboardRouter from "./routes/dashboardRouter.js";
 import platformPlanRouter from "./routes/platformPlanRouter.js";
+import { sanitizeBarbers } from "./services/barberService.js";
 
 dotenv.config();
 const app = express();
@@ -75,4 +76,7 @@ app.use(errorHandler);
 
 
 const port = Number(process.env.PORT || 4000);
-app.listen(port, () => console.log(`API rodando na porta ${port}`));
+app.listen(port, () => {
+  console.log(`API rodando na porta ${port}`);
+  void sanitizeBarbers();
+});

@@ -1,4 +1,4 @@
-﻿import prisma from "../database/database.js";
+import prisma from "../database/database.js";
 import { badRequest, forbidden, notFound } from "../errors/index.js";
 import {
   cancelAppointmentInBarbershop,
@@ -31,6 +31,40 @@ function decimalToNumber(v: any): number {
   if (typeof v === "number") return v;
   if (typeof v?.toNumber === "function") return v.toNumber();
   return Number(v);
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function isServiceCoveredBySubscription(
+  service: { serviceId: string; serviceName: string; coveredByPlan: boolean },
+  activeSubscription: any
+): boolean {
+  if (service.coveredByPlan === true) return true;
+
+  if (activeSubscription?.subscription_plans?.subscription_plan_features) {
+    const normServiceName = normalizeText(service.serviceName || "");
+    const features = activeSubscription.subscription_plans.subscription_plan_features;
+    return features.some((f: any) => {
+      let featureText = String(f.feature || "").trim();
+      if (featureText.includes("::")) {
+        const parts = featureText.split("::");
+        featureText = parts[parts.length - 1].trim();
+      }
+      const normFeature = normalizeText(featureText);
+      return (
+        normFeature === normServiceName ||
+        normFeature.includes(normServiceName) ||
+        normServiceName.includes(normFeature)
+      );
+    });
+  }
+
+  return false;
 }
 
 function getServiceDurationMinutes(service: any): number {
@@ -200,12 +234,7 @@ const SCHEDULE_PLACEHOLDERS = new Set([
   "Ex: Domingo: Fechado",
 ]);
 
-function normalizeText(value: string) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
-}
+
 
 function isRealScheduleLine(value: unknown) {
   const trimmed = String(value ?? "").trim();
@@ -791,6 +820,13 @@ export async function createAppointmentService(params: {
     throw badRequest("Cliente/dependente já possui agendamento neste horário");
   }
 
+  const hasActiveSubscription = activeSubscription && (activeSubscription.status === "active" || activeSubscription.status === "paused");
+  const isSubscriptionAppointment = !!(
+    hasActiveSubscription &&
+    normalizedServices.every((s: any) => isServiceCoveredBySubscription(s, activeSubscription))
+  );
+  const appointmentStatus = "scheduled";
+
   const created = await createAppointmentTx({
     barbershopId: params.barbershopId,
     barberId,
@@ -801,6 +837,7 @@ export async function createAppointmentService(params: {
     notes: params.data.notes,
     lastModifiedBy: params.actorId ?? null,
     lastActionDescription: `Agendado por ${await resolveActorDisplayName(params.barbershopId, params.actorRole, params.actorId)}`,
+    status: appointmentStatus,
     services: normalizedServices,
     products: (products ?? []).map((product) => ({
       productId: product.id,
@@ -827,7 +864,7 @@ export async function createAppointmentService(params: {
     userId: clientId,
     appointmentId: created.id,
     amount: totalAmount,
-    method: 'local',
+    method: isSubscriptionAppointment ? 'subscription' : 'local',
     status: 'pending',
   }).catch((err) => {
     console.error('[appointmentService] Falha ao criar registro de pagamento:', err);
