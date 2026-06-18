@@ -15,7 +15,6 @@ import {
   listBarbersService,
   updateBarberService,
 } from "../services/barberService.js";
-import { validatePlanUserLimit } from "../services/planLimitService.js";
 
 function joiErrors(error: any) {
   return error.details?.map((d: any) => d.message) ?? ["Dados inválidos"];
@@ -25,8 +24,10 @@ export async function listBarbers(req: Request, res: Response) {
   const { error, value } = ListBarbersQuerySchema.validate(req.query, { abortEarly: false });
   if (error) return res.status(422).send(joiErrors(error));
 
+  const barbershopId = (value.barbershopId as string) || req.user!.barbershopId;
+
   const result = await listBarbersService({
-    barbershopId: req.user!.barbershopId,
+    barbershopId,
     query: { q: value.q, page: value.page, limit: value.limit },
   });
 
@@ -48,9 +49,6 @@ export async function getBarberById(req: Request, res: Response) {
 export async function createBarber(req: Request, res: Response) {
   const { error } = CreateBarberSchema.validate(req.body);
   if (error) return res.status(422).send(joiErrors(error));
-
-  // ✅ Validar limite de barbeiros por plano antes de criar
-  await validatePlanUserLimit(req.user!.barbershopId, "barber");
 
   const result = await createBarberService({
     barbershopId: req.user!.barbershopId,

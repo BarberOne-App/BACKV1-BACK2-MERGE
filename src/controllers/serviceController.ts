@@ -34,6 +34,7 @@ export async function createService(req: Request, res: Response) {
     name: value.name,
     basePrice: value.basePrice,
     durationMinutes: value.durationMinutes,
+    servicePoints: value.servicePoints ?? value.service_points ?? 1,
     comissionPercent: value.comissionPercent ?? value.commissionPercent ?? null,
     imageUrl: value.imageUrl ?? null,
     active: value.active,
@@ -69,7 +70,7 @@ export async function listServices(req: Request, res: Response) {
   });
   if (error) return res.status(422).send(joiErrors(error));
 
-  const barbershopId = req.user!.barbershopId;
+  const barbershopId = (value.barbershopId as string) || req.user!.barbershopId;
 
   const result = await listServicesService({
     barbershopId,
@@ -115,6 +116,7 @@ export async function updateService(req: Request, res: Response) {
       name: b.value.name,
       basePrice: b.value.basePrice,
       durationMinutes: b.value.durationMinutes,
+      servicePoints: b.value.servicePoints ?? b.value.service_points,
       comissionPercent: b.value.comissionPercent ?? b.value.commissionPercent ?? null,
       promotionalPrice: b.value.promotionalPrice,
       covered_by_plan: b.value.covered_by_plan,

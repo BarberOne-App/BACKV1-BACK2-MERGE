@@ -1,10 +1,12 @@
-// src/models/serviceSchemas.ts
+// src/models/serviceSchema.ts
 import joi from "joi";
 
 export const CreateServiceSchema = joi.object({
   name: joi.string().trim().min(2).required(),
   basePrice: joi.number().precision(2).positive().required(),
   durationMinutes: joi.number().integer().min(1).required(),
+  servicePoints: joi.number().integer().min(1).optional(),
+  service_points: joi.number().integer().min(1).optional(),
   commissionPercent: joi.number().precision(2).min(0).max(100).allow(null),
   comissionPercent: joi.number().precision(2).min(0).max(100).allow(null),
   promotionalPrice: joi.number().precision(2).min(0).optional(),
@@ -17,6 +19,8 @@ const ImportServiceRowSchema = joi.object({
   name: joi.string().trim().min(2).required(),
   basePrice: joi.number().precision(2).positive().required(),
   durationMinutes: joi.number().integer().min(1).required(),
+  servicePoints: joi.number().integer().min(1).optional(),
+  service_points: joi.number().integer().min(1).optional(),
   commissionPercent: joi.number().precision(2).min(0).max(100).allow(null).optional(),
   comissionPercent: joi.number().precision(2).min(0).max(100).allow(null).optional(),
   promotionalPrice: joi.number().precision(2).min(0).optional(),
@@ -34,6 +38,8 @@ export const UpdateServiceSchema = joi
     name: joi.string().trim().min(2).optional(),
     basePrice: joi.number().precision(2).positive().optional(),
     durationMinutes: joi.number().integer().min(1).optional(),
+    servicePoints: joi.number().integer().min(1).optional(),
+    service_points: joi.number().integer().min(1).optional(),
     commissionPercent: joi.number().precision(2).min(0).max(100).allow(null),
     comissionPercent: joi.number().precision(2).min(0).max(100).allow(null),
     promotionalPrice: joi.number().precision(2).min(0).optional(),
@@ -52,4 +58,5 @@ export const ListServicesQuerySchema = joi.object({
   includeInactive: joi.boolean().truthy("true").falsy("false").optional(),
   page: joi.number().integer().min(1).optional(),
   limit: joi.number().integer().min(1).max(100).optional(),
+  barbershopId: joi.string().uuid().optional(),
 });

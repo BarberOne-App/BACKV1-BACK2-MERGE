@@ -1,0 +1,5 @@
+ALTER TABLE "services"
+ADD COLUMN IF NOT EXISTS "service_points" INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE "appointment_services"
+ADD COLUMN IF NOT EXISTS "service_points" INTEGER NOT NULL DEFAULT 1;

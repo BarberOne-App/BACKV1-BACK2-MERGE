@@ -22,6 +22,8 @@ function serializeService(s: any) {
     name: s.name,
     basePrice: decimalToNumber(s.base_price),
     durationMinutes: s.duration_minutes,
+    servicePoints: s.service_points ?? 1,
+    service_points: s.service_points ?? 1,
     commissionPercent: decimalToNumber(s.comission_percent),
     comissionPercent: decimalToNumber(s.comission_percent),
     commission_percent: decimalToNumber(s.comission_percent),
@@ -41,6 +43,8 @@ export async function createServiceService(
     name: string;
     basePrice: number;
     durationMinutes: number;
+    servicePoints?: number;
+    service_points?: number;
     comissionPercent?: number | null;
     promotionalPrice?: number;
     covered_by_plan?: boolean;
@@ -53,6 +57,7 @@ export async function createServiceService(
     name: data.name,
     base_price: data.basePrice,
     duration_minutes: data.durationMinutes,
+    service_points: data.servicePoints ?? data.service_points ?? 1,
     comission_percent: data.comissionPercent ?? null,
     promotional_price: data.promotionalPrice ?? 0,
     covered_by_plan: data.covered_by_plan ?? false,
@@ -70,6 +75,8 @@ export async function importServicesService(params: {
     name: string;
     basePrice: number;
     durationMinutes: number;
+    servicePoints?: number;
+    service_points?: number;
     commissionPercent?: number | null;
     comissionPercent?: number | null;
     promotionalPrice?: number;
@@ -94,6 +101,7 @@ export async function importServicesService(params: {
         name: row.name,
         basePrice: row.basePrice,
         durationMinutes: row.durationMinutes,
+        servicePoints: row.servicePoints ?? row.service_points ?? 1,
         comissionPercent: row.comissionPercent ?? row.commissionPercent ?? null,
         promotionalPrice: row.promotionalPrice ?? 0,
         covered_by_plan: row.covered_by_plan ?? false,
@@ -167,6 +175,8 @@ export async function updateServiceService(params: {
     name?: string;
     basePrice?: number;
     durationMinutes?: number;
+    servicePoints?: number;
+    service_points?: number;
     comissionPercent?: number | null;
     promotionalPrice?: number;
     covered_by_plan?: boolean;
@@ -181,6 +191,9 @@ export async function updateServiceService(params: {
       : {}),
     ...(params.data.durationMinutes != null
       ? { duration_minutes: params.data.durationMinutes }
+      : {}),
+    ...(params.data.servicePoints != null || params.data.service_points != null
+      ? { service_points: params.data.servicePoints ?? params.data.service_points }
       : {}),
     ...(params.data.comissionPercent != null
       ? { comission_percent: params.data.comissionPercent }

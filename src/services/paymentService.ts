@@ -1,4 +1,5 @@
 import { forbidden, notFound } from "../errors/index.js";
+import prisma from "../database/database.js";
 import {
   createPaymentInBarbershop,
   deletePaymentInBarbershop,
@@ -374,6 +375,16 @@ export async function updatePaymentService(params: {
   );
 
   if (!updated) throw notFound("Pagamento não encontrado");
+
+  if (
+    (params.data.status === "paid" || params.data.status === "covered") &&
+    updated.appointment_id
+  ) {
+    await prisma.appointments.update({
+      where: { id: updated.appointment_id },
+      data: { status: "confirmed" },
+    });
+  }
 
   return serialize(updated);
 }

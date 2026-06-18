@@ -20,6 +20,7 @@ export const LoginSchema = joi
     // slug: slug.required(),
     email: email.required(),
     password: password.required(),
+    barbershopId: joi.string().uuid().optional(),
   })
   .options({ abortEarly: false, stripUnknown: true });
 

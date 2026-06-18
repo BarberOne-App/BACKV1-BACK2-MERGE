@@ -218,13 +218,21 @@ export async function listCommissionAppointments(params: {
           id: true,
           service_name: true,
           unit_price: true,
+          service_points: true,
           quantity: true,
           services: {
             select: {
               comission_percent: true,
               covered_by_plan: true,
+              service_points: true,
             },
           },
+        },
+      },
+      payment_transactions: {
+        select: {
+          method: true,
+          status: true,
         },
       },
     },
