@@ -489,67 +489,11 @@ export async function getMyBarberService(params: {
 }
 
 /* ── SANITIZE BARBERS (Startup Routine) ── */
+// ROTINA REMOVIDA A PEDIDO DO USUÁRIO
+// Motivo: Apagar barbeiros de forma automática quebra histórico, agendamentos e regras de negócio.
+// Se precisar corrigir barbeiros, deverá ser criada uma rota explícita e manual no futuro, 
+// marcando os barbeiros como inativos em vez de excluí-los do banco.
 export async function sanitizeBarbers() {
-  console.log("[Sanitization] Starting barber sanitization...");
-  try {
-    // 1. Get all users with role 'barber'
-    const barberUsers = await prisma.users.findMany({
-      where: {
-        role: "barber",
-        current_barbershop_id: { not: null },
-      },
-      include: {
-        barbers: true,
-      },
-    });
-
-    let createdCount = 0;
-    for (const user of barberUsers) {
-      if (!user.barbers) {
-        // Create corresponding barber record
-        await prisma.barbers.create({
-          data: {
-            user_id: user.id,
-            display_name: user.name,
-            barbershop_id: user.current_barbershop_id!,
-            salary: Math.round(user.salary ?? 0),
-          },
-        });
-        createdCount++;
-        console.log(`[Sanitization] Created barber record for user: ${user.name} (${user.id})`);
-      }
-    }
-    console.log(`[Sanitization] Sync: created ${createdCount} missing barber records.`);
-
-    // 2. Find all barbers that are orphans (no user_id, or user does not exist, or user role is not 'barber')
-    const allBarbers = await prisma.barbers.findMany({
-      include: {
-        users: true,
-      },
-    });
-
-    let deletedCount = 0;
-    for (const barber of allBarbers) {
-      const isOrphan = !barber.user_id || !barber.users || barber.users.role !== "barber" || barber.users.current_barbershop_id !== barber.barbershop_id;
-      if (isOrphan) {
-        try {
-          // Attempt to delete cascade relationships or just delete
-          await prisma.barber_services.deleteMany({
-            where: { barber_id: barber.id },
-          });
-          
-          await prisma.barbers.delete({
-            where: { id: barber.id },
-          });
-          deletedCount++;
-          console.log(`[Sanitization] Deleted orphan/invalid barber record: ${barber.display_name} (${barber.id})`);
-        } catch (err: any) {
-          console.warn(`[Sanitization] Could not delete barber record ${barber.id} due to constraints: ${err.message}`);
-        }
-      }
-    }
-    console.log(`[Sanitization] Cleanup: deleted ${deletedCount} orphan barber records.`);
-  } catch (error) {
-    console.error("[Sanitization] Error during barber sanitization:", error);
-  }
+  console.log("[Sanitization] Routine has been permanently disabled.");
+  return;
 }
