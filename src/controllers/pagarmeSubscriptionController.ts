@@ -18,6 +18,10 @@ export async function createPagarmeClientSubscriptionController(
   next: NextFunction
 ) {
   try {
+    console.log('\n=== INICIO CRIACAO ASSINATURA CLIENTE ===');
+    console.log('BODY:', JSON.stringify(req.body, null, 2));
+    console.log('USER:', req.user);
+
     const result = await createPagarmeClientSubscriptionService(req.body, req.user);
     return res.status(201).json(result);
   } catch (error) {

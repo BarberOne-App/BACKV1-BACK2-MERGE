@@ -642,6 +642,12 @@ enum subscription_status {
   paused
   cancelled
   expired
+  failed
+  future
+  pending
+  paid
+  unpaid
+  trialing
 }
 
 enum user_role {
