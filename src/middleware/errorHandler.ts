@@ -38,7 +38,16 @@ import type { NextFunction, Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 import { AppError } from "../errors/index.js";
 
+import fs from 'fs';
+
 export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
+  try {
+    fs.appendFileSync('error.log', new Date().toISOString() + ' - ' + (err.stack || err.message || JSON.stringify(err)) + '\n');
+    if (err.details) {
+      fs.appendFileSync('error.log', 'Details: ' + JSON.stringify(err.details) + '\n');
+    }
+  } catch (e) {}
+
   // erro “controlado”
   if (err instanceof AppError) {
     return res.status(err.status).send([err.message]);
@@ -55,6 +64,19 @@ export function errorHandler(err: any, _req: Request, res: Response, _next: Next
     return res.status(err.status).send([err.message || 'Erro na API externa']);
   }
 
-  console.error(err);
-  return res.status(500).send(["Erro interno"]);
+  console.error('ERRO COMPLETO:', err);
+  console.error('STACK:', err?.stack);
+
+  if (err?.response?.data) {
+    console.error(
+      'PAGARME RESPONSE:',
+      JSON.stringify(err.response.data, null, 2)
+    );
+  }
+
+  return res.status(500).json({
+    error: err?.message || 'Erro interno',
+    details: err?.response?.data || err?.details,
+    stack: err?.stack
+  });
 }
