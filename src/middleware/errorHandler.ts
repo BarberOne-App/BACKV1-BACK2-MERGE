@@ -49,6 +49,12 @@ export function errorHandler(err: any, _req: Request, res: Response, _next: Next
     if (err.code === "P2002") return res.status(409).send(["Dados já cadastrados (unique)"]);
   }
 
+  // Erro da API do Pagar.me ou outro serviço com status numérico
+  if (err && typeof err.status === 'number') {
+    console.error('Erro na API externa (Pagar.me):', err);
+    return res.status(err.status).send([err.message || 'Erro na API externa']);
+  }
+
   console.error(err);
   return res.status(500).send(["Erro interno"]);
 }

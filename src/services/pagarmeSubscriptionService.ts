@@ -118,8 +118,24 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
         },
     });
 
-    if (!shop?.pagarme_recipient_id) {
-        throw new Error('A barbearia ainda não possui recipient_id do Pagar.me.');
+    let useSplit = false;
+    if (shop?.pagarme_recipient_id) {
+        try {
+            const recipient = await pagarmeRequest(`/recipients/${encodeURIComponent(shop.pagarme_recipient_id)}`, {
+                method: 'GET',
+            });
+            const recipientStatus = String(recipient?.status || '').toLowerCase();
+            const allowedRecipientStatuses = new Set(['registration', 'affiliation', 'active']);
+            if (allowedRecipientStatuses.has(recipientStatus)) {
+                useSplit = true;
+            } else {
+                console.warn(`[Pagar.me] Recebedor ${shop.pagarme_recipient_id} está inativo (status: ${recipientStatus}). A transação prosseguirá sem divisão de valores.`);
+            }
+        } catch (error: any) {
+            console.warn(`[Pagar.me] Recebedor ${shop.pagarme_recipient_id} não pôde ser validado (erro: ${error?.message || error}). A transação prosseguirá sem divisão de valores.`);
+        }
+    } else {
+        console.warn(`[Pagar.me] Barbearia ${barbershopId} sem pagarme_recipient_id. A transação prosseguirá sem divisão de valores.`);
     }
 
     if (!params.cardToken) {
@@ -174,21 +190,23 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
             planId: String(plan.id),
             planPaymentMethod: configuredPaymentMethod,
         },
-        split: {
-            enabled: true,
-            rules: [
-                {
-                    amount: 100,
-                    recipient_id: shop.pagarme_recipient_id,
-                    type: 'percentage',
-                    options: {
-                        charge_processing_fee: true,
-                        charge_remainder_fee: true,
-                        liable: true,
+        ...(useSplit && shop?.pagarme_recipient_id ? {
+            split: {
+                enabled: true,
+                rules: [
+                    {
+                        amount: 100,
+                        recipient_id: shop.pagarme_recipient_id,
+                        type: 'percentage',
+                        options: {
+                            charge_processing_fee: true,
+                            charge_remainder_fee: true,
+                            liable: true,
+                        },
                     },
-                },
-            ],
-        },
+                ],
+            }
+        } : {}),
     };
 
     const pagarmeSubscription = await pagarmeRequest('/subscriptions', {
@@ -204,7 +222,7 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
         pagarme_subscription_id: pagarmeSubscription.id,
         pagarme_plan_id: pagarmePlanId,
         pagarme_customer_id: pagarmeSubscription.customer?.id || null,
-        pagarme_recipient_id: shop.pagarme_recipient_id,
+        pagarme_recipient_id: useSplit && shop ? shop.pagarme_recipient_id : null,
         status: pagarmeSubscription.status || 'active',
         payment_method: configuredPaymentMethod as any,
         amount: Number(plan.price),
