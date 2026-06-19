@@ -211,13 +211,13 @@ export async function createSubscriptionService(params: {
   if (!plan) throw notFound("Plano não encontrado");
 
   const planPaymentMethod = (plan as any).payment_method as string;
+  
+  // Define o payment method final (se o admin/barbeiro enviou um manual, usa o dele, senão usa o do plano)
+  const finalPaymentMethod = params.data.paymentMethod || planPaymentMethod;
 
-  if (planPaymentMethod === "credito" || planPaymentMethod === "debito") {
-    throw badRequest("Este plano exige pagamento no cartao. Finalize a assinatura pelo checkout com cartao.");
-  }
-
-  if (params.data.paymentMethod && params.data.paymentMethod !== planPaymentMethod) {
-    throw badRequest("A forma de pagamento deve ser a configurada pela barbearia para este plano.");
+  // Se a tentativa final for pagar no cartão via painel (onde não há checkout), bloqueia
+  if (finalPaymentMethod === "credito" || finalPaymentMethod === "debito") {
+    throw badRequest("Pagamentos no cartao devem ser assinados pelo cliente no checkout seguro.");
   }
 
   // 3. Criar subscription + primeiro ciclo
@@ -226,7 +226,7 @@ export async function createSubscriptionService(params: {
     userId,
     planId: params.data.planId,
     amount: decimalToNumber(plan.price),
-    paymentMethod: planPaymentMethod,
+    paymentMethod: finalPaymentMethod,
     isRecurring: params.data.isRecurring,
     autoRenewal: params.data.autoRenewal,
     cutsPerMonth: plan.cuts_per_month,
