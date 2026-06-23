@@ -372,76 +372,7 @@ export async function listSuperAdminBarbershopsService(params: ListParams) {
   ]);
 
 
-  // const items = await Promise.all(
-  //   barbershops.map(async (shop) => {
-  //     // Busca o admin user da barbearia
-  //     const adminUser = await prisma.users.findFirst({
-  //       where: {
-  //         role: "admin",
-  //         user_barbershops: { some: { barbershop_id: shop.id } },
-  //       },
-  //       orderBy: { created_at: "asc" },
-  //       select: {
-  //         id: true,
-  //         name: true,
-  //         email: true,
-  //         phone: true,
-  //         created_at: true,
-  //       },
-  //     });
-
-  //     // Busca a subscription do admin (usando seu user_id) na barbearia
-  //     let adminSubscription = null;
-  //     if (adminUser) {
-  //       adminSubscription = await prisma.subscriptions.findFirst({
-  //         where: {
-  //           barbershop_id: shop.id,
-  //           user_id: adminUser.id,
-  //           status: { in: ["active", "paused"] },
-  //         },
-  //         orderBy: [
-  //           { last_billing_at: "desc" },
-  //           { created_at: "desc" },
-  //         ],
-  //         select: {
-  //           id: true,
-  //           status: true,
-  //           created_at: true,
-  //           next_billing_at: true,
-  //           last_billing_at: true,
-  //           subscription_plans: {
-  //             select: {
-  //               id: true,
-  //               name: true,
-  //               price: true,
-  //             },
-  //           },
-  //         },
-  //       });
-  //     }
-
-  //     const metrics = await buildBarbershopMetrics(shop.id);
-
-  //     return {
-  //       id: shop.id,
-  //       name: shop.name,
-  //       slug: shop.slug,
-  //       cnpj: shop.cnpj,
-  //       email: shop.email,
-  //       phone: shop.phone,
-  //       status: shop.status,
-  //       createdAt: shop.created_at,
-  //       blockedReason: shop.blocked_reason,
-  //       blockedAt: shop.blocked_at,
-  //       deactivatedAt: shop.deactivated_at,
-  //       admin: adminUser,
-  //       subscription: adminSubscription || null,
-  //       metrics,
-  //     };
-  //   })
-  // );
-
-  const items = await prisma.$transaction(
+  const items = await Promise.all(
     barbershops.map(async (shop) => {
       // Busca o admin user da barbearia
       const adminUser = await prisma.users.findFirst({
