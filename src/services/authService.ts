@@ -1,9 +1,10 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import prisma from "../database/database.js";
-import { signToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt.js";
+import { signToken, signRefreshToken, verifyRefreshToken, signResetToken, verifyResetToken } from "../utils/jwt.js";
+import { sendPasswordResetEmail, sendWelcomeEmail } from "./emailService.js";
 import { slugify, normalizeEmail } from "../utils/slugify.js";
-import { badRequest, conflict, forbidden, notFound, unauthorized } from "../errors/index.js";
+import { badRequest, conflict, forbidden, notFound, serviceUnavailable, unauthorized } from "../errors/index.js";
 import {
   createBarberProfile,
   createBarbershop,
@@ -16,6 +17,22 @@ import {
   findUserByCpf
 } from "../repository/authRepository.js";
 import { expirePlatformSubscription } from "./subscriptionExpirationService.js";
+
+function sendWelcomeEmailAfterRegistration(params: {
+  to?: string | null;
+  name: string;
+  barbershopName?: string | null;
+}) {
+  if (!params.to) return;
+
+  void sendWelcomeEmail({
+    to: params.to,
+    name: params.name,
+    barbershopName: params.barbershopName,
+  }).catch((error) => {
+    console.error("[email] Falha ao enviar e-mail de boas-vindas:", error);
+  });
+}
 
 function isPrismaUniqueError(e: any) {
   return e?.code === "P2002";
@@ -361,6 +378,12 @@ export async function googleAuthService(params: {
     },
   });
 
+  sendWelcomeEmailAfterRegistration({
+    to: created.email,
+    name: created.name,
+    barbershopName: shop?.name,
+  });
+
   return buildAuthResponse(created, true);
 }
 
@@ -428,6 +451,12 @@ export async function registerBarbershopService(params: {
       return { shop, user };
     });
 
+    sendWelcomeEmailAfterRegistration({
+      to: result.user.email,
+      name: result.user.name,
+      barbershopName: result.shop.name,
+    });
+
     const tokens = generateTokenPair({
       userId: result.user.id,
       barbershopId: result.shop.id,
@@ -488,6 +517,12 @@ export async function registerClientService(params: {
     role: "client",
     isAdmin: false,
     passwordHash,
+  });
+
+  sendWelcomeEmailAfterRegistration({
+    to: user.email,
+    name: user.name,
+    barbershopName: shop.name,
   });
 
   const tokens = generateTokenPair({
@@ -563,6 +598,13 @@ export async function registerBarberService(params: {
     return { user, barber };
   });
 
+  const shop = await prisma.barbershops.findUnique({ where: { id: params.barbershopId }, select: { name: true } });
+  sendWelcomeEmailAfterRegistration({
+    to: result.user.email,
+    name: result.user.name,
+    barbershopName: shop?.name,
+  });
+
   return {
     user: {
       id: result.user.id,
@@ -620,6 +662,11 @@ export async function registerSuperAdminService(params: {
       role: true,
       is_admin: true,
     },
+  });
+
+  sendWelcomeEmailAfterRegistration({
+    to: user.email,
+    name: user.name,
   });
 
   const token = signToken({
@@ -777,4 +824,69 @@ export async function switchBarbershopService(params: {
       photoUrl: updatedUser.photo_url,
     },
   };
+}
+
+export async function forgotPasswordService(params: { email: string }) {
+  const email = normalizeEmail(params.email);
+  if (!email) {
+    throw badRequest("E-mail é obrigatório");
+  }
+
+  // Busca o usuário pelo e-mail
+  const user = await prisma.users.findFirst({
+    where: { email },
+    select: { id: true, name: true, email: true },
+  });
+
+  // Se o usuário não existir, retornamos sucesso genérico por segurança
+  if (!user || !user.email) {
+    return { message: "Se o e-mail estiver cadastrado, um link de recuperação será enviado." };
+  }
+
+  // Gera o token de reset (1 hora)
+  const resetToken = signResetToken({ userId: user.id });
+
+  // Constrói o link de reset
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+  // Envia o e-mail
+  try {
+    await sendPasswordResetEmail({
+      to: user.email,
+      name: user.name,
+      resetLink,
+    });
+  } catch (error) {
+    console.error("[ForgotPassword] Erro ao enviar e-mail:", error);
+    throw serviceUnavailable("O serviço de e-mail está temporariamente indisponível. Tente novamente mais tarde.");
+  }
+
+  return { message: "Se o e-mail estiver cadastrado, um link de recuperação será enviado." };
+}
+
+export async function resetPasswordService(params: { token: string; password: string }) {
+  if (!params.token || !params.password) {
+    throw badRequest("Token e senha são obrigatórios");
+  }
+
+  if (params.password.length < 4) {
+    throw badRequest("A senha deve ter no mínimo 4 caracteres");
+  }
+
+  let decoded;
+  try {
+    decoded = verifyResetToken(params.token);
+  } catch (error) {
+    throw unauthorized("Token de recuperação inválido ou expirado");
+  }
+
+  const passwordHash = await bcrypt.hash(params.password, rounds());
+
+  await prisma.users.update({
+    where: { id: decoded.userId },
+    data: { password_hash: passwordHash, updated_at: new Date() },
+  });
+
+  return { message: "Senha alterada com sucesso." };
 }

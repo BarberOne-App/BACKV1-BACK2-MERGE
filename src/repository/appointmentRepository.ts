@@ -23,6 +23,9 @@ const appointmentSelect = {
   dependents: {
     select: { id: true, name: true, age: true },
   },
+  barbershops: {
+    select: { id: true, name: true, email: true, phone: true },
+  },
   appointment_services: {
     select: {
       id: true,
