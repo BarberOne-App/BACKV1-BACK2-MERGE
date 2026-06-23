@@ -205,7 +205,7 @@ export async function getDashboardStats(barbershopId: string) {
   // Mapa de contagem de agendamentos por barbeiro
   const barberCountMap = new Map<string, number>();
   for (const row of barberAppointmentCounts) {
-    if (row.barber_id) barberCountMap.set(row.barber_id, row._count?._all ?? 0);
+    if (row.barber_id) barberCountMap.set(row.barber_id, row._count.id);
   }
 
   const staff = barbers.map((b) => ({
