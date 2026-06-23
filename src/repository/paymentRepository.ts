@@ -60,7 +60,7 @@ export async function listPaymentsInBarbershop(params: {
   const page = params.page ?? 1;
   const limit = params.limit ?? 20;
 
-  const [items, total] = await Promise.all([
+  const [items, total] = await prisma.$transaction([
     prisma.payment_transactions.findMany({
       where,
       orderBy: { created_at: "desc" },
@@ -189,7 +189,7 @@ export async function getPaymentSummary(barbershopId: string) {
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const todayEnd = new Date(todayStart.getTime() + 86400000);
 
-  const [all, todayPaid] = await Promise.all([
+  const [all, todayPaid] = await prisma.$transaction([
     prisma.payment_transactions.groupBy({
       by: ['status'],
       where: { barbershop_id: barbershopId },

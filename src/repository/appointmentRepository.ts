@@ -103,7 +103,7 @@ export async function listAppointmentsInBarbershop(params: {
 
   const skip = (params.page - 1) * params.limit;
 
-  const [items, total] = await Promise.all([
+  const [items, total] = await prisma.$transaction([
     prisma.appointments.findMany({
       where,
       select: appointmentSelect,

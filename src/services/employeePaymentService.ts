@@ -520,7 +520,7 @@ export async function getEmployeePayrollSummaryService(params: {
       ? "FREE_BARBER"
       : "FIXED_BARBER";
 
-  const [employees, appointments, vales, payments, paymentHistory] = await Promise.all([
+  const [employees, appointments, vales, payments, paymentHistory] = await prisma.$transaction([
     listPayrollEmployees({
       barbershopId: params.barbershopId,
       employeeId: params.employeeId,
@@ -776,7 +776,7 @@ export async function createEmployeePaymentService(params: {
     liquido?: number;
   };
 }) {
-  const [summary, homeInfo] = await Promise.all([
+  const [summary, homeInfo] = await prisma.$transaction([
     getEmployeePayrollSummaryService({
       barbershopId: params.barbershopId,
       actorRole: "admin",

@@ -132,7 +132,7 @@ export async function listAllPaymentsService(params: {
   const page = params.query.page ?? 1;
   const limit = params.query.limit ?? 20;
 
-  const [{ items, total }, summary] = await Promise.all([
+  const [{ items, total }, summary] = await prisma.$transaction([
     listPaymentsInBarbershop({
       barbershopId: params.barbershopId,
       userId,

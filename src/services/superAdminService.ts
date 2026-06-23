@@ -137,7 +137,7 @@ function buildWhere(params: ListParams): Prisma.barbershopsWhereInput {
 
 async function buildBarbershopMetrics(barbershopId: string) {
   const [appointmentsCount, servicesCount, productsCount, clientsCount, employeesCount] =
-    await Promise.all([
+    await prisma.$transaction([
       prisma.appointments.count({ where: { barbershop_id: barbershopId } }),
       prisma.services.count({ where: { barbershop_id: barbershopId } }),
       prisma.products.count({ where: { barbershop_id: barbershopId } }),
@@ -177,7 +177,7 @@ export async function getSuperAdminDashboardService() {
     pendingBarbershops,
     activeSubscriptions,
     newBarbershopsThisMonth,
-  ] = await Promise.all([
+  ] = await prisma.$transaction([
     prisma.barbershops.count(),
     prisma.barbershops.count({ where: { status: "active" } }),
     prisma.barbershops.count({ where: { status: "inactive" } }),
@@ -222,7 +222,7 @@ export async function listSuperAdminUsersService(params: {
 
   const skip = (params.page - 1) * params.limit;
 
-  const [total, users] = await Promise.all([
+  const [total, users] = await prisma.$transaction([
     prisma.users.count({ where }),
     prisma.users.findMany({
       where,
@@ -264,7 +264,7 @@ export async function listSuperAdminBarbershopsService(params: ListParams) {
   const where = buildWhere(params);
   const skip = (params.page - 1) * params.limit;
 
-  const [total, barbershops] = await Promise.all([
+  const [total, barbershops] = await prisma.$transaction([
     prisma.barbershops.count({ where }),
     prisma.barbershops.findMany({
       where,
@@ -289,7 +289,7 @@ export async function listSuperAdminBarbershopsService(params: ListParams) {
     }),
   ]);
 
-  const items = await Promise.all(
+  const items = await prisma.$transaction(
     barbershops.map(async (shop) => {
       // Busca o admin user da barbearia
       const adminUser = await prisma.users.findFirst({
