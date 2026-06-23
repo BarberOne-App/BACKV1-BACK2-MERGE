@@ -7,8 +7,10 @@ import {
     upsertHomeInfoByBarbershop,
     updateBarbershopProfileById,
 } from "../repository/settingRepository.js";
+import { expirePlatformSubscription } from "./subscriptionExpirationService.js";
 
 type PayrollFrequency = "weekly" | "biweekly" | "monthly";
+type CommissionRuleType = "FIXED_BARBER" | "FREE_BARBER";
 
 function normalizeHiddenBookingPaymentMethods(value: unknown) {
     if (!Array.isArray(value)) return [];
@@ -119,6 +121,7 @@ export async function getBarbershopProfileService(barbershopId: string) {
         throw badRequest("Barbearia ativa nao encontrada");
     }
 
+    await expirePlatformSubscription(barbershopId);
     const row = await getBarbershopProfileById(barbershopId);
 
     if (!row) {
@@ -170,17 +173,34 @@ export async function updateBarbershopProfileService(params: {
     return mapBarbershopProfile(row);
 }
 
+function normalizeSubscriptionBarberRule(value: unknown): "fixed" | "free_choice" {
+    if (value === "free_choice") return "free_choice";
+    return "fixed";
+}
+
+function normalizeCommissionRuleType(value: unknown): CommissionRuleType {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (normalized === "FREE_BARBER") return "FREE_BARBER";
+    return "FIXED_BARBER";
+}
+
 export async function getSettingsService(barbershopId: string) {
     const row = await getSettingsByBarbershop(barbershopId);
     const hiddenBookingPaymentMethods = normalizeHiddenBookingPaymentMethods(
         (row as any)?.hidden_booking_payment_methods,
     );
+    const subscriptionBarberRule = normalizeSubscriptionBarberRule((row as any)?.subscription_barber_rule);
+    const commissionRuleType =
+        subscriptionBarberRule === "free_choice" ? "FREE_BARBER" : "FIXED_BARBER";
 
     return {
         pixKey: row?.pix_key ?? "",
         termsDocumentUrl: row?.terms_document_url ?? "",
         termsDocumentName: row?.terms_document_name ?? "",
         hiddenBookingPaymentMethods,
+        subscriptionBarberRule,
+        commissionRuleType,
+        commission_rule_type: commissionRuleType,
     };
 }
 
@@ -191,6 +211,9 @@ export async function upsertSettingsService(params: {
     termsDocumentUrl?: string;
     termsDocumentName?: string;
     hiddenBookingPaymentMethods?: string[];
+    subscriptionBarberRule?: string;
+    commissionRuleType?: string;
+    commission_rule_type?: string;
 }) {
     if (params.actorRole !== "admin") {
         throw forbidden("Apenas admin pode alterar configurações");
@@ -200,11 +223,17 @@ export async function upsertSettingsService(params: {
         params.hiddenBookingPaymentMethods,
     );
 
+    const subscriptionBarberRule = normalizeSubscriptionBarberRule(params.subscriptionBarberRule);
+    const commissionRuleType =
+        subscriptionBarberRule === "free_choice" ? "FREE_BARBER" : "FIXED_BARBER";
+
     const row = await upsertSettingsByBarbershop(params.barbershopId, {
         pix_key: params.pixKey ?? "",
         terms_document_url: params.termsDocumentUrl ?? null,
         terms_document_name: params.termsDocumentName ?? null,
         hidden_booking_payment_methods: hiddenBookingPaymentMethods,
+        subscription_barber_rule: subscriptionBarberRule,
+        commission_rule_type: commissionRuleType,
     });
 
     return {
@@ -214,6 +243,9 @@ export async function upsertSettingsService(params: {
         hiddenBookingPaymentMethods: normalizeHiddenBookingPaymentMethods(
             (row as any)?.hidden_booking_payment_methods,
         ),
+        subscriptionBarberRule,
+        commissionRuleType,
+        commission_rule_type: commissionRuleType,
     };
 }
 

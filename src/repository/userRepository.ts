@@ -97,7 +97,14 @@ export async function findUserByIdInBarbershop(barbershopId: string, userId: str
 /* ── CHECK EMAIL ── */
 export async function emailExistsInBarbershop(barbershopId: string, email: string) {
   const user = await prisma.users.findFirst({
-    where: { current_barbershop_id: barbershopId, email },
+    where: {
+      email,
+      user_barbershops: {
+        some: {
+          barbershop_id: barbershopId,
+        },
+      },
+    },
     select: { id: true },
   });
   return !!user;
@@ -126,24 +133,39 @@ export async function createUserInBarbershop(data: {
   permissions?: any;
   photoUrl?: string | null;
 }) {
-  return prisma.users.create({
-    data: {
-      current_barbershop_id: data.barbershopId,
-      name: data.name,
-      email: data.email,
-      phone: data.phone ?? null,
-      cpf: data.cpf ?? null,
-      birth_date: data.birthDate ? new Date(data.birthDate) : null,
-      role: data.role as any,
-      is_admin: data.isAdmin,
-      password_hash: data.passwordHash,
-      permissions: data.permissions ?? undefined,
-      photo_url: data.photoUrl ?? null,
-      barbershop_links: {
-        create: { barbershop_id: data.barbershopId },
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.users.create({
+      data: {
+        current_barbershop_id: data.barbershopId,
+        name: data.name,
+        email: data.email,
+        phone: data.phone ?? null,
+        cpf: data.cpf ?? null,
+        birth_date: data.birthDate ? new Date(data.birthDate) : null,
+        role: data.role as any,
+        is_admin: data.isAdmin,
+        password_hash: data.passwordHash,
+        permissions: data.permissions ?? undefined,
+        photo_url: data.photoUrl ?? null,
+        user_barbershops: {
+          create: { barbershop_id: data.barbershopId },
+        },
       },
-    },
-    select: userSelect,
+      select: userSelect,
+    });
+
+    if (data.role === "barber") {
+      await tx.barbers.create({
+        data: {
+          user_id: user.id,
+          display_name: data.name,
+          barbershop_id: data.barbershopId,
+          salary: Math.round(Number(user.salary ?? 0)),
+        },
+      });
+    }
+
+    return user;
   });
 }
 
@@ -156,10 +178,60 @@ export async function updateUserInBarbershop(
   const existing = await findUserByIdInBarbershop(barbershopId, userId);
   if (!existing) return null;
 
-  return prisma.users.update({
-    where: { id: userId },
-    data,
-    select: userSelect,
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.users.update({
+      where: { id: userId },
+      data,
+      select: userSelect,
+    });
+
+    const oldRole = existing.role;
+    const newRole = user.role;
+
+    if (newRole === "barber" && oldRole !== "barber") {
+      await tx.barbers.upsert({
+        where: { user_id: userId },
+        update: {
+          display_name: user.name,
+          barbershop_id: barbershopId,
+          salary: Math.round(Number(user.salary ?? 0)),
+        },
+        create: {
+          user_id: userId,
+          display_name: user.name,
+          barbershop_id: barbershopId,
+          salary: Math.round(Number(user.salary ?? 0)),
+        },
+      });
+    } else if (oldRole === "barber" && newRole !== "barber") {
+      const barber = await tx.barbers.findUnique({
+        where: { user_id: userId },
+      });
+      if (barber) {
+        await tx.barber_services.deleteMany({
+          where: { barber_id: barber.id },
+        });
+        await tx.barbers.delete({
+          where: { id: barber.id },
+        });
+      }
+    } else if (newRole === "barber") {
+      await tx.barbers.upsert({
+        where: { user_id: userId },
+        update: {
+          display_name: user.name,
+          salary: Math.round(Number(user.salary ?? 0)),
+        },
+        create: {
+          user_id: userId,
+          display_name: user.name,
+          barbershop_id: barbershopId,
+          salary: Math.round(Number(user.salary ?? 0)),
+        },
+      });
+    }
+
+    return user;
   });
 }
 
@@ -184,8 +256,23 @@ export async function deleteUserFromBarbershop(barbershopId: string, userId: str
   const existing = await findUserByIdInBarbershop(barbershopId, userId);
   if (!existing) return null;
 
-  await prisma.users.delete({ where: { id: userId } });
-  return true;
+  return prisma.$transaction(async (tx) => {
+    const barber = await tx.barbers.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (barber) {
+      await tx.barber_services.deleteMany({
+        where: { barber_id: barber.id },
+      });
+      await tx.barbers.delete({
+        where: { id: barber.id },
+      });
+    }
+
+    await tx.users.delete({ where: { id: userId } });
+    return true;
+  });
 }
 
 /* ── GLOBAL GET / UPDATE HELPERS (for Super Admin) ── */

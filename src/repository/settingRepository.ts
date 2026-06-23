@@ -52,6 +52,8 @@ export function upsertSettingsByBarbershop(
         terms_document_url?: string | null;
         terms_document_name?: string | null;
         hidden_booking_payment_methods?: string[] | null;
+        subscription_barber_rule?: string | null;
+        commission_rule_type?: string | null;
     }
 ) {
     return prisma.barbershop_settings.upsert({
@@ -61,6 +63,8 @@ export function upsertSettingsByBarbershop(
             terms_document_url: data.terms_document_url ?? null,
             terms_document_name: data.terms_document_name ?? null,
             hidden_booking_payment_methods: data.hidden_booking_payment_methods ?? [],
+            subscription_barber_rule: data.subscription_barber_rule ?? "fixed",
+            commission_rule_type: data.commission_rule_type ?? "FIXED_BARBER",
         },
         create: {
             barbershop_id: barbershopId,
@@ -68,6 +72,8 @@ export function upsertSettingsByBarbershop(
             terms_document_url: data.terms_document_url ?? null,
             terms_document_name: data.terms_document_name ?? null,
             hidden_booking_payment_methods: data.hidden_booking_payment_methods ?? [],
+            subscription_barber_rule: data.subscription_barber_rule ?? "fixed",
+            commission_rule_type: data.commission_rule_type ?? "FIXED_BARBER",
         },
     });
 }

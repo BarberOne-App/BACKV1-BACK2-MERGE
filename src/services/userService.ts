@@ -1,5 +1,7 @@
 import bcrypt from "bcrypt";
 import { conflict, forbidden, notFound } from "../errors/index.js";
+import prisma from "../database/database.js";
+import { sendWelcomeEmail } from "./emailService.js";
 // import { ensureCanAddRole } from "./planLimitService.js";
 import {
   cpfExistsForOtherUser,
@@ -14,6 +16,22 @@ import {
 
 function rounds() {
   return Number(process.env.BCRYPT_SALT_ROUNDS || 10);
+}
+
+function sendWelcomeEmailAfterUserCreation(params: {
+  to?: string | null;
+  name: string;
+  barbershopName?: string | null;
+}) {
+  if (!params.to) return;
+
+  void sendWelcomeEmail({
+    to: params.to,
+    name: params.name,
+    barbershopName: params.barbershopName,
+  }).catch((error) => {
+    console.error("[email] Falha ao enviar e-mail de boas-vindas:", error);
+  });
 }
 
 function serializeUser(u: any) {
@@ -259,6 +277,16 @@ export async function createUserService(params: {
     photoUrl: params.data.photoUrl ?? null,
   });
 
+  const shop = await prisma.barbershops.findUnique({
+    where: { id: params.barbershopId },
+    select: { name: true },
+  });
+  sendWelcomeEmailAfterUserCreation({
+    to: user.email,
+    name: user.name,
+    barbershopName: shop?.name,
+  });
+
   return serializeUser(user);
 }
 
@@ -313,6 +341,10 @@ export async function importUsersService(params: {
   let missingRequiredCount = 0;
 
   const passwordHash = await bcrypt.hash(defaultPassword, rounds());
+  const shop = await prisma.barbershops.findUnique({
+    where: { id: params.barbershopId },
+    select: { name: true },
+  });
 
   const preparedRows = params.data.rows.map((row, index) => {
     const normalizedEmail = normalizeEmail(row.email);
@@ -457,6 +489,12 @@ export async function importUsersService(params: {
         passwordHash,
         permissions: normalized.permissions,
         photoUrl: normalized.photoUrl,
+      });
+
+      sendWelcomeEmailAfterUserCreation({
+        to: user.email,
+        name: user.name,
+        barbershopName: shop?.name,
       });
 
       created.push(serializeUser(user));

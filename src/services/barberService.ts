@@ -227,7 +227,7 @@
 // }
 
 
-import { forbidden, notFound } from "../errors/index.js";
+import { conflict, forbidden, notFound } from "../errors/index.js";
 import {
   createBarberInBarbershop,
   deleteBarberFromBarbershop,
@@ -242,9 +242,11 @@ import { findUserByIdInBarbershop } from "../repository/userRepository.js";
 import prisma from "../database/database.js";
 
 function serializeBarber(b: any) {
+  const displayName = b.users?.name ?? b.display_name;
+
   return {
     id: b.id,
-    displayName: b.display_name,
+    displayName,
     specialty: b.specialty,
     photoUrl: b.photo_url,
     commissionPercent: b.commission_percent,
@@ -259,7 +261,7 @@ function serializeBarber(b: any) {
     user: b.users
       ? {
         id: b.users.id,
-        name: b.users.name,
+        name: displayName,
         email: b.users.email,
         phone: b.users.phone,
         role: b.users.role,
@@ -320,6 +322,16 @@ export async function createBarberService(params: {
     throw forbidden("Apenas admin pode criar barbeiros");
   }
 
+  if (!params.data.userId) {
+    throw conflict("Informe o usuario do funcionario barbeiro");
+  }
+
+  const linkedUser = await findUserByIdInBarbershop(params.barbershopId, params.data.userId);
+  if (!linkedUser) throw notFound("Usuario informado nao encontrado nesta barbearia");
+  if (linkedUser.role !== "barber") {
+    throw conflict("O usuario informado precisa ter perfil de barbeiro");
+  }
+
   // Se um userId foi fornecido, validar que o user existe na barbearia
   if (params.data.userId) {
     const user = await findUserByIdInBarbershop(params.barbershopId, params.data.userId);
@@ -341,12 +353,12 @@ export async function createBarberService(params: {
 
   const barber = await createBarberInBarbershop({
     barbershopId: params.barbershopId,
-    displayName: params.data.displayName.trim(),
+    displayName: linkedUser.name.trim(),
     specialty: params.data.specialty ?? null,
     photoUrl: params.data.photoUrl ?? null,
     commissionPercent: params.data.commissionPercent ?? null,
     salarioFixo: params.data.salarioFixo ?? null,
-    userId: params.data.userId ?? null,
+    userId: linkedUser.id,
     serviceIds: params.data.serviceIds ?? [],
   });
 
@@ -370,6 +382,9 @@ export async function updateBarberService(params: {
   if (params.actorRole !== "admin") {
     throw forbidden("Apenas admin pode editar barbeiros");
   }
+
+  const existing = await findBarberByIdInBarbershop(params.barbershopId, params.barberId);
+  if (!existing) throw notFound("Barbeiro nÃ£o encontrado");
 
   const updateData: any = {};
 
@@ -409,6 +424,13 @@ export async function updateBarberService(params: {
     }
   }
 
+  if (params.data.displayName !== undefined && existing.user_id) {
+    await prisma.users.update({
+      where: { id: existing.user_id },
+      data: { name: params.data.displayName.trim() },
+    });
+  }
+
   const updated = await updateBarberInBarbershop(params.barbershopId, params.barberId, updateData);
   if (!updated) throw notFound("Barbeiro não encontrado");
 
@@ -429,6 +451,10 @@ export async function linkBarberToUserService(params: {
   // Valida que o user existe na barbearia
   const user = await findUserByIdInBarbershop(params.barbershopId, params.userId);
   if (!user) throw notFound("Usuário não encontrado nesta barbearia");
+
+  if (user.role !== "barber") {
+    throw conflict("O usuario informado precisa ter perfil de barbeiro");
+  }
 
   const linked = await linkBarberToUser(params.barbershopId, params.barberId, params.userId);
   if (!linked) throw notFound("Barbeiro não encontrado");
@@ -460,4 +486,14 @@ export async function getMyBarberService(params: {
   const barber = await findBarberByUserIdInBarbershop(params.barbershopId, params.userId);
   if (!barber) throw notFound("Perfil de barbeiro não encontrado para este usuário");
   return serializeBarber(barber);
+}
+
+/* ── SANITIZE BARBERS (Startup Routine) ── */
+// ROTINA REMOVIDA A PEDIDO DO USUÁRIO
+// Motivo: Apagar barbeiros de forma automática quebra histórico, agendamentos e regras de negócio.
+// Se precisar corrigir barbeiros, deverá ser criada uma rota explícita e manual no futuro, 
+// marcando os barbeiros como inativos em vez de excluí-los do banco.
+export async function sanitizeBarbers() {
+  console.log("[Sanitization] Routine has been permanently disabled.");
+  return;
 }

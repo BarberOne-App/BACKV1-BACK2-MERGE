@@ -32,12 +32,12 @@ function serializeUser(user: any) {
     createdAt: user.created_at,
     updatedAt: user.updated_at,
     barbershopId: user.current_barbershop_id,
-    barbershop: user.current_barbershop
+    barbershop: user.barbershops
       ? {
-          id: user.current_barbershop.id,
-          name: user.current_barbershop.name,
-          slug: user.current_barbershop.slug,
-          status: user.current_barbershop.status,
+          id: user.barbershops.id,
+          name: user.barbershops.name,
+          slug: user.barbershops.slug,
+          status: user.barbershops.status,
         }
       : null,
   };
@@ -144,13 +144,13 @@ async function buildBarbershopMetrics(barbershopId: string) {
       prisma.users.count({
         where: {
           role: "client",
-          barbershop_links: { some: { barbershop_id: barbershopId } },
+          user_barbershops: { some: { barbershop_id: barbershopId } },
         },
       }),
       prisma.users.count({
         where: {
           role: { in: ["barber", "receptionist", "admin"] },
-          barbershop_links: { some: { barbershop_id: barbershopId } },
+          user_barbershops: { some: { barbershop_id: barbershopId } },
         },
       }),
     ]);
@@ -239,7 +239,7 @@ export async function listSuperAdminUsersService(params: {
         created_at: true,
         updated_at: true,
         current_barbershop_id: true,
-        current_barbershop: {
+        barbershops: {
           select: {
             id: true,
             name: true,
@@ -295,7 +295,7 @@ export async function listSuperAdminBarbershopsService(params: ListParams) {
       const adminUser = await prisma.users.findFirst({
         where: {
           role: "admin",
-          barbershop_links: { some: { barbershop_id: shop.id } },
+          user_barbershops: { some: { barbershop_id: shop.id } },
         },
         orderBy: { created_at: "asc" },
         select: {
@@ -420,7 +420,7 @@ export async function getSuperAdminBarbershopByIdService(barbershopId: string) {
   const adminUser = await prisma.users.findFirst({
     where: {
       role: "admin",
-      barbershop_links: { some: { barbershop_id: barbershopId } },
+      user_barbershops: { some: { barbershop_id: barbershopId } },
     },
     orderBy: { created_at: "asc" },
     select: {
@@ -480,7 +480,7 @@ export async function listSuperAdminBarbershopUsersService(barbershopId: string)
 
   const users = await prisma.users.findMany({
     where: {
-      barbershop_links: {
+      user_barbershops: {
         some: { barbershop_id: barbershopId },
       },
     },
@@ -608,7 +608,7 @@ export async function updateSuperAdminUserService(params: {
       created_at: true,
       updated_at: true,
       current_barbershop_id: true,
-      current_barbershop: {
+      barbershops: {
         select: {
           id: true,
           name: true,

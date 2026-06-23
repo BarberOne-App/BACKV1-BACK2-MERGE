@@ -7,7 +7,7 @@ const SUB_INCLUDE = {
       subscription_plan_features: { orderBy: { sort_order: "asc" as const } },
     },
   },
-  monthly_barber: { select: { id: true, display_name: true, photo_url: true } },
+  barbers: { select: { id: true, display_name: true, photo_url: true } },
   subscription_cycles: {
     orderBy: { period_start: "desc" as const },
     take: 1,
@@ -19,13 +19,6 @@ function getStartOfToday() {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
   return date;
-}
-
-function getPendingGraceLimitDate() {
-  const startOfToday = getStartOfToday();
-  const graceLimit = new Date(startOfToday);
-  graceLimit.setDate(graceLimit.getDate() - 5);
-  return graceLimit;
 }
 
 /* ───── LIST ───── */
@@ -86,27 +79,15 @@ export async function findActiveSubscriptionByUser(
   userId: string
 ) {
   const startOfToday = getStartOfToday();
-  const pendingGraceLimit = getPendingGraceLimitDate();
 
   return prisma.subscriptions.findFirst({
     where: {
       barbershop_id: barbershopId,
       user_id: userId,
+      status: "active",
       OR: [
-        {
-          status: "active",
-          OR: [
-            { next_billing_at: null },
-            { next_billing_at: { gte: startOfToday } },
-          ],
-        },
-        {
-          status: "paused",
-          next_billing_at: {
-            gte: pendingGraceLimit,
-            lt: startOfToday,
-          },
-        },
+        { next_billing_at: null },
+        { next_billing_at: { gte: startOfToday } },
       ],
     },
     orderBy: [
@@ -300,26 +281,14 @@ export async function applyOverdueStates(
 /* ───── FIND ACTIVE BY BARBERSHOP (any owner) ───── */
 export async function findActiveSubscriptionByBarbershop(barbershopId: string) {
   const startOfToday = getStartOfToday();
-  const pendingGraceLimit = getPendingGraceLimitDate();
 
   return prisma.subscriptions.findFirst({
     where: {
       barbershop_id: barbershopId,
+      status: "active",
       OR: [
-        {
-          status: "active",
-          OR: [
-            { next_billing_at: null },
-            { next_billing_at: { gte: startOfToday } },
-          ],
-        },
-        {
-          status: "paused",
-          next_billing_at: {
-            gte: pendingGraceLimit,
-            lt: startOfToday,
-          },
-        },
+        { next_billing_at: null },
+        { next_billing_at: { gte: startOfToday } },
       ],
     },
     orderBy: [

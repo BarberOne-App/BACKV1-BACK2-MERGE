@@ -13,6 +13,7 @@ import {
 } from "../repository/subscriptionRepository.js";
 import { findPlanByIdInBarbershop } from "../repository/subscriptionPlanRepository.js";
 import { findBarberByIdInBarbershop } from "../repository/barberRepository.js";
+import { expireClientSubscriptions } from "./subscriptionExpirationService.js";
 
 /* ────────── helpers ────────── */
 
@@ -76,8 +77,8 @@ function serialize(sub: any) {
     daysOverdue: sub.days_overdue,
     overdueNotificationSent: sub.overdue_notification_sent,
     monthlyBarberId: sub.monthly_barber_id,
-    monthlyBarber: sub.monthly_barber
-      ? { id: sub.monthly_barber.id, displayName: sub.monthly_barber.display_name, photoUrl: sub.monthly_barber.photo_url }
+    monthlyBarber: sub.barbers
+      ? { id: sub.barbers.id, displayName: sub.barbers.display_name, photoUrl: sub.barbers.photo_url }
       : null,
     monthlyBarberSetAt: sub.monthly_barber_set_at,
     currentCycle: cycle
@@ -132,6 +133,11 @@ export async function listSubscriptionsService(params: {
   const page = params.query.page ?? 1;
   const limit = params.query.limit ?? 20;
 
+  await expireClientSubscriptions({
+    barbershopId: params.barbershopId,
+    userId,
+  });
+
   const { items, total } = await listSubscriptionsInBarbershop({
     barbershopId: params.barbershopId,
     userId,
@@ -150,6 +156,8 @@ export async function getSubscriptionByIdService(params: {
   barbershopId: string;
   subscriptionId: string;
 }) {
+  await expireClientSubscriptions({ barbershopId: params.barbershopId });
+
   const sub = await findSubscriptionByIdInBarbershop(params.barbershopId, params.subscriptionId);
   if (!sub) throw notFound("Assinatura não encontrada");
   return serialize(sub);
@@ -175,6 +183,11 @@ export async function createSubscriptionService(params: {
       ? params.actorId
       : params.data.userId ?? params.actorId;
 
+  await expireClientSubscriptions({
+    barbershopId: params.barbershopId,
+    userId,
+  });
+
   // Verifica assinatura ativa (lógica de negócio)
   const existing = await findActiveSubscriptionByUser(params.barbershopId, userId);
   if (existing) {
@@ -197,13 +210,23 @@ export async function createSubscriptionService(params: {
   const plan = await findPlanByIdInBarbershop(params.barbershopId, params.data.planId);
   if (!plan) throw notFound("Plano não encontrado");
 
+  const planPaymentMethod = (plan as any).payment_method as string;
+  
+  // Define o payment method final (se o admin/barbeiro enviou um manual, usa o dele, senão usa o do plano)
+  const finalPaymentMethod = params.data.paymentMethod || planPaymentMethod;
+
+  // Se a tentativa final for pagar no cartão via painel (onde não há checkout), bloqueia
+  if (finalPaymentMethod === "credito" || finalPaymentMethod === "debito") {
+    throw badRequest("Pagamentos no cartao devem ser assinados pelo cliente no checkout seguro.");
+  }
+
   // 3. Criar subscription + primeiro ciclo
   const created = await createSubscriptionTx({
     barbershopId: params.barbershopId,
     userId,
     planId: params.data.planId,
-    amount: params.data.amount,
-    paymentMethod: params.data.paymentMethod,
+    amount: decimalToNumber(plan.price),
+    paymentMethod: finalPaymentMethod,
     isRecurring: params.data.isRecurring,
     autoRenewal: params.data.autoRenewal,
     cutsPerMonth: plan.cuts_per_month,
@@ -273,6 +296,14 @@ export async function renewSubscriptionService(params: {
   if (!sub) throw notFound("Assinatura não encontrada");
 
   const cutsPerMonth = sub.subscription_plans?.cuts_per_month ?? 0;
+
+  const configuredPaymentMethod = (sub.subscription_plans as any)?.payment_method;
+  if (configuredPaymentMethod === "credito" || configuredPaymentMethod === "debito") {
+    if (sub.payment_method !== configuredPaymentMethod || !sub.pagarme_subscription_id) {
+      throw badRequest("A renovacao deste plano exige pagamento no cartao pelo checkout da assinatura.");
+    }
+    throw badRequest("Planos pagos no cartao sao renovados automaticamente pelo provedor de pagamento.");
+  }
 
   const renewed = await renewSubscriptionTx(
     params.barbershopId,

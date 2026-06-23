@@ -1,11 +1,14 @@
 import crypto from 'crypto';
 import prisma from '../database/database.js';
 import { pagarmeRequest } from './pagarmeApi.js';
+import { expirePlatformSubscription, getStartOfToday } from './subscriptionExpirationService.js';
 
 export async function getBarbershopPlatformSubscriptionService(barbershopId: string) {
+    await expirePlatformSubscription(barbershopId);
+
     const subscription = await prisma.barbershop_platform_subscriptions.findUnique({
         where: { barbershop_id: barbershopId },
-        include: { platform_plan: true },
+        include: { platform_plans: true },
     });
 
     if (!subscription) return { subscription: null };
@@ -15,21 +18,22 @@ export async function getBarbershopPlatformSubscriptionService(barbershopId: str
             id: subscription.id,
             status: subscription.status,
             selectedPlan: subscription.selected_plan,
-            plan: subscription.platform_plan
+            plan: subscription.platform_plans
                 ? {
-                      id: subscription.platform_plan.id,
-                      name: subscription.platform_plan.name,
-                      description: subscription.platform_plan.description ?? null,
-                      price: Number(subscription.platform_plan.price),
-                      interval: subscription.platform_plan.interval,
-                      intervalCount: subscription.platform_plan.interval_count,
-                      trialPeriodDays: subscription.platform_plan.trial_period_days,
-                      isRecommended: subscription.platform_plan.is_recommended,
-                      isPublic: subscription.platform_plan.is_public,
+                      id: subscription.platform_plans.id,
+                      name: subscription.platform_plans.name,
+                      description: subscription.platform_plans.description ?? null,
+                      price: Number(subscription.platform_plans.price),
+                      interval: subscription.platform_plans.interval,
+                      intervalCount: subscription.platform_plans.interval_count,
+                      trialPeriodDays: subscription.platform_plans.trial_period_days,
+                      isRecommended: subscription.platform_plans.is_recommended,
+                      isPublic: subscription.platform_plans.is_public,
                   }
                 : null,
             amount: subscription.amount ? Number(subscription.amount) : null,
             nextBillingDate: subscription.next_billing_date?.toISOString() ?? null,
+            canceledAt: subscription.canceled_at?.toISOString() ?? null,
             startDate: subscription.start_date?.toISOString() ?? null,
             createdAt: subscription.created_at?.toISOString() ?? null,
         },
@@ -181,11 +185,18 @@ export async function createPagarmeBarbershopPlatformSubscriptionService(params:
         throw new Error('Barbearia não encontrada.');
     }
 
+    await expirePlatformSubscription(barbershopId);
+
+    const now = new Date();
     const existingActiveSubscription = await prisma.barbershop_platform_subscriptions.findFirst({
         where: {
             barbershop_id: barbershopId,
             status: 'active',
             canceled_at: null,
+            OR: [
+                { next_billing_date: null },
+                { next_billing_date: { gt: now } },
+            ],
         },
     });
 
@@ -237,7 +248,6 @@ export async function createPagarmeBarbershopPlatformSubscriptionService(params:
     });
 
     const status = normalizeSubscriptionStatus(pagarmeSubscription?.status || 'active');
-    const now = new Date();
     const nextBillingDate = parseDate(pagarmeSubscription?.next_billing_at);
     const amount = resolveAmountInReais(params.amount) ?? extractAmountFromSubscription(pagarmeSubscription);
 
@@ -386,7 +396,10 @@ export async function syncPagarmeSubscriptionWebhook(eventType: string, subscrip
             },
         });
 
-        const paymentMethodLabel = paymentMethod === 'pix'
+        const configuredPlanPaymentMethod = String(metadata?.planPaymentMethod || '').trim();
+        const paymentMethodLabel = configuredPlanPaymentMethod === 'debito'
+            ? 'debito'
+            : paymentMethod === 'pix'
             ? 'pix'
             : paymentMethod === 'credit_card'
                 ? 'credito'

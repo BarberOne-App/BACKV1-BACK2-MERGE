@@ -1,4 +1,4 @@
-﻿import prisma from "../database/database.js";
+import prisma from "../database/database.js";
 import { badRequest, forbidden, notFound } from "../errors/index.js";
 import {
   cancelAppointmentInBarbershop,
@@ -15,14 +15,18 @@ import {
 } from "../repository/barberRepository.js";
 import { findBlockedDateByDate } from "../repository/blockedDateRepository.js";
 import { createPaymentInBarbershop, syncPaymentStatusByAppointment } from "../repository/paymentRepository.js";
-import { getHomeInfoByBarbershop } from "../repository/settingRepository.js";
+import { getHomeInfoByBarbershop, getSettingsByBarbershop } from "../repository/settingRepository.js";
 import { findActiveSubscriptionByUser } from "../repository/subscriptionRepository.js";
 import {
   calculateCommission,
   getCommissionPercentByType,
   resolveServiceCommissionType,
 } from "./commissionService.js";
-import { sendAppointmentConfirmedEmail } from "./emailService.js";
+import {
+  sendAppointmentConfirmedEmail,
+  sendAppointmentReceiptEmail,
+  sendNewAppointmentNotificationEmail,
+} from "./emailService.js";
 
 /* ─────────────────── helpers ─────────────────── */
 
@@ -31,6 +35,40 @@ function decimalToNumber(v: any): number {
   if (typeof v === "number") return v;
   if (typeof v?.toNumber === "function") return v.toNumber();
   return Number(v);
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function isServiceCoveredBySubscription(
+  service: { serviceId: string; serviceName: string; coveredByPlan: boolean },
+  activeSubscription: any
+): boolean {
+  if (service.coveredByPlan === true) return true;
+
+  if (activeSubscription?.subscription_plans?.subscription_plan_features) {
+    const normServiceName = normalizeText(service.serviceName || "");
+    const features = activeSubscription.subscription_plans.subscription_plan_features;
+    return features.some((f: any) => {
+      let featureText = String(f.feature || "").trim();
+      if (featureText.includes("::")) {
+        const parts = featureText.split("::");
+        featureText = parts[parts.length - 1].trim();
+      }
+      const normFeature = normalizeText(featureText);
+      return (
+        normFeature === normServiceName ||
+        normFeature.includes(normServiceName) ||
+        normServiceName.includes(normFeature)
+      );
+    });
+  }
+
+  return false;
 }
 
 function getServiceDurationMinutes(service: any): number {
@@ -200,12 +238,7 @@ const SCHEDULE_PLACEHOLDERS = new Set([
   "Ex: Domingo: Fechado",
 ]);
 
-function normalizeText(value: string) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
-}
+
 
 function isRealScheduleLine(value: unknown) {
   const trimmed = String(value ?? "").trim();
@@ -415,6 +448,34 @@ function canChangeMonthlyBarber(subscription: any, appointmentStartAt: Date) {
     reason:
       "Só é possível trocar de barbeiro após 30 dias da vinculação ou após a renovação do plano",
   };
+}
+
+function getSubscriptionBarberRule(settings: any): "fixed" | "free_choice" {
+  return settings?.subscription_barber_rule === "free_choice" ? "free_choice" : "fixed";
+}
+
+function validateBarberCanPerformServices(
+  barber: any,
+  services: { serviceId?: string | null; serviceName?: string | null }[],
+) {
+  const allowedServiceIds = Array.isArray(barber?.barber_services)
+    ? barber.barber_services.map((item: any) => String(item.service_id)).filter(Boolean)
+    : [];
+
+  // Barbers without explicit service restrictions keep legacy behavior.
+  if (allowedServiceIds.length === 0) return;
+
+  const allowed = new Set(allowedServiceIds);
+  const missing = services.filter((service) => service.serviceId && !allowed.has(String(service.serviceId)));
+
+  if (missing.length > 0) {
+    const names = missing.map((service) => service.serviceName).filter(Boolean).join(", ");
+    throw badRequest(
+      names
+        ? `O barbeiro selecionado não realiza: ${names}`
+        : "O barbeiro selecionado não realiza um ou mais serviços solicitados",
+    );
+  }
 }
 
 async function getNormalizedAppointmentServices(params: {
@@ -628,6 +689,8 @@ export async function createAppointmentService(params: {
     services,
   });
 
+  validateBarberCanPerformServices(barber, normalizedServices);
+
   const totalDuration = normalizedServices.reduce(
     (sum, service) => sum + service.durationMinutes * service.quantity,
     0,
@@ -699,15 +762,18 @@ export async function createAppointmentService(params: {
     throw badRequest("Não é possível agendar no passado");
   }
 
-  const activeSubscription = await findActiveSubscriptionByUser(
-    params.barbershopId,
-    clientId,
-  );
+  const [activeSubscription, barbershopSettings] = await Promise.all([
+    findActiveSubscriptionByUser(params.barbershopId, clientId),
+    getSettingsByBarbershop(params.barbershopId),
+  ]);
 
   const isFitAppointment = String(params.data.notes || '').includes('[barberone:fit]');
+  const subscriptionBarberRule = getSubscriptionBarberRule(barbershopSettings);
+  const isFreeChoiceRule = subscriptionBarberRule === "free_choice";
 
   if (
     !isFitAppointment &&
+    !isFreeChoiceRule &&
     activeSubscription?.monthly_barber_id &&
     activeSubscription.monthly_barber_id !== barberId
   ) {
@@ -758,6 +824,13 @@ export async function createAppointmentService(params: {
     throw badRequest("Cliente/dependente já possui agendamento neste horário");
   }
 
+  const hasActiveSubscription = activeSubscription && (activeSubscription.status === "active" || activeSubscription.status === "paused");
+  const isSubscriptionAppointment = !!(
+    hasActiveSubscription &&
+    normalizedServices.every((s: any) => isServiceCoveredBySubscription(s, activeSubscription))
+  );
+  const appointmentStatus = "scheduled";
+
   const created = await createAppointmentTx({
     barbershopId: params.barbershopId,
     barberId,
@@ -768,6 +841,7 @@ export async function createAppointmentService(params: {
     notes: params.data.notes,
     lastModifiedBy: params.actorId ?? null,
     lastActionDescription: `Agendado por ${await resolveActorDisplayName(params.barbershopId, params.actorRole, params.actorId)}`,
+    status: appointmentStatus,
     services: normalizedServices,
     products: (products ?? []).map((product) => ({
       productId: product.id,
@@ -794,11 +868,78 @@ export async function createAppointmentService(params: {
     userId: clientId,
     appointmentId: created.id,
     amount: totalAmount,
-    method: 'local',
+    method: isSubscriptionAppointment ? 'subscription' : 'local',
     status: 'pending',
   }).catch((err) => {
     console.error('[appointmentService] Falha ao criar registro de pagamento:', err);
   });
+
+  if (
+    !isFitAppointment &&
+    !isFreeChoiceRule &&
+    activeSubscription &&
+    activeSubscription.monthly_barber_id !== barberId
+  ) {
+    await prisma.subscriptions.update({
+      where: { id: activeSubscription.id },
+      data: {
+        monthly_barber_id: barberId,
+        monthly_barber_set_at: new Date(),
+      },
+    });
+  }
+
+  const serviceEmailItems = (created.appointment_services ?? []).map((item: any) => ({
+    name: String(item.service_name || "Serviço"),
+    quantity: Number(item.quantity || 1),
+    unitPrice: decimalToNumber(item.unit_price),
+  }));
+  const productEmailItems = (created.appointment_products ?? []).map((item: any) => ({
+    name: String(item.product_name || "Produto"),
+    quantity: Number(item.quantity || 1),
+    unitPrice: decimalToNumber(item.unit_price) * (1 - decimalToNumber(item.discount_percent) / 100),
+  }));
+  const emailJobs: Promise<void>[] = [];
+
+  if (created.users?.email) {
+    emailJobs.push(sendAppointmentReceiptEmail({
+      to: created.users.email,
+      appointmentId: created.id,
+      clientName: created.users.name,
+      dependentName: created.dependents?.name,
+      barbershopName: created.barbershops.name,
+      barberName: created.barbers?.display_name,
+      startAt: created.start_at,
+      services: serviceEmailItems,
+      products: productEmailItems,
+      totalAmount,
+    }));
+  }
+
+  if (created.barbershops.email) {
+    emailJobs.push(sendNewAppointmentNotificationEmail({
+      to: created.barbershops.email,
+      appointmentId: created.id,
+      barbershopName: created.barbershops.name,
+      clientName: created.users.name,
+      clientEmail: created.users.email,
+      clientPhone: created.users.phone,
+      dependentName: created.dependents?.name,
+      barberName: created.barbers?.display_name,
+      startAt: created.start_at,
+      serviceNames: serviceEmailItems.map((item) => item.name),
+      totalAmount,
+    }));
+  } else {
+    console.warn(`[email] Barbearia ${created.barbershop_id} sem e-mail para notificação de agendamento.`);
+  }
+
+  if (emailJobs.length) {
+    void Promise.allSettled(emailJobs).then((results) => {
+      const failed = results.filter((result) => result.status === "rejected").length;
+      if (failed) console.error(`[email] ${failed} envio(s) do agendamento ${created.id} falharam.`);
+    });
+  }
 
   return serializeAppointment(created);
 }
@@ -875,15 +1016,25 @@ export async function updateAppointmentService(params: {
 
     if (!barber) throw notFound("Barbeiro não encontrado");
 
+    validateBarberCanPerformServices(
+      barber,
+      existingAppointment.appointment_services.map((service: any) => ({
+        serviceId: service.service_id,
+        serviceName: service.service_name,
+      })),
+    );
+
     const appointmentClientId = existingAppointment.client_id;
 
     if (appointmentClientId && params.data.barberId !== existingAppointment.barber_id) {
-      const activeSubscription = await findActiveSubscriptionByUser(
-        params.barbershopId,
-        appointmentClientId,
-      );
+      const [activeSubscription, barbershopSettings] = await Promise.all([
+        findActiveSubscriptionByUser(params.barbershopId, appointmentClientId),
+        getSettingsByBarbershop(params.barbershopId),
+      ]);
+      const isFreeChoiceRule = getSubscriptionBarberRule(barbershopSettings) === "free_choice";
 
       if (
+        !isFreeChoiceRule &&
         activeSubscription?.monthly_barber_id &&
         activeSubscription.monthly_barber_id !== params.data.barberId
       ) {
@@ -898,6 +1049,20 @@ export async function updateAppointmentService(params: {
         if (!barberChangeValidation.allowed) {
           throw badRequest(barberChangeValidation.reason!);
         }
+      }
+
+      if (
+        !isFreeChoiceRule &&
+        activeSubscription &&
+        activeSubscription.monthly_barber_id !== params.data.barberId
+      ) {
+        await prisma.subscriptions.update({
+          where: { id: activeSubscription.id },
+          data: {
+            monthly_barber_id: params.data.barberId,
+            monthly_barber_set_at: new Date(),
+          },
+        });
       }
     }
 

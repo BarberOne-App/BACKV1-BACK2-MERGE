@@ -20,6 +20,7 @@ export const LoginSchema = joi
     // slug: slug.required(),
     email: email.required(),
     password: password.required(),
+    barbershopId: joi.string().uuid().optional(),
   })
   .options({ abortEarly: false, stripUnknown: true });
 
@@ -65,6 +66,7 @@ export const RegisterBarbershopSchema = joi
 
     password: password.required(),
     selectedPlan: joi.string().trim().required(),
+    subscriptionBarberRule: joi.string().trim().valid("fixed", "free_choice").default("fixed"),
   })
   .options({ abortEarly: false, stripUnknown: true });
 

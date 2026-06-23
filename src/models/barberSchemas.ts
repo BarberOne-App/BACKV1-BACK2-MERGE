@@ -6,7 +6,7 @@ export const CreateBarberSchema = joi
     specialty: joi.string().trim().allow("", null).optional(),
     photoUrl: joi.string().uri().allow("", null).optional(),
     commissionPercent: joi.number().integer().min(0).max(100).allow(null).optional(),
-    userId: joi.string().uuid().allow(null).optional(),
+    userId: joi.string().uuid().required(),
     salarioFixo: joi.number().min(0).allow(0).optional(),
     serviceIds: joi.array().items(joi.string().uuid()).optional(),
   })
@@ -39,5 +39,6 @@ export const ListBarbersQuerySchema = joi
     q: joi.string().trim().max(120).optional(),
     page: joi.number().integer().min(1).optional(),
     limit: joi.number().integer().min(1).max(100).optional(),
+    barbershopId: joi.string().uuid().optional(),
   })
   .unknown(true);

@@ -7,6 +7,10 @@ export const CreatePlanSchema = joi
     price: joi.number().min(0).required(),
     color: joi.string().trim().allow("", null).optional(),
     cutsPerMonth: joi.number().integer().min(0).required(),
+    paymentMethod: joi
+      .string()
+      .valid("pix", "debito", "credito")
+      .required(),
     active: joi.boolean().optional().default(true),
     recommended: joi.boolean().optional().default(false),
     maxBarbers: joi.number().integer().min(0).allow(null).optional(),
@@ -23,6 +27,10 @@ export const UpdatePlanSchema = joi
     price: joi.number().min(0).optional(),
     color: joi.string().trim().allow("", null).optional(),
     cutsPerMonth: joi.number().integer().min(0).optional(),
+    paymentMethod: joi
+      .string()
+      .valid("pix", "debito", "credito")
+      .optional(),
     active: joi.boolean().optional(),
     recommended: joi.boolean().optional(),
     maxBarbers: joi.number().integer().min(0).allow(null).optional(),

@@ -45,12 +45,30 @@ export async function pagarmeRequest(path: string, options: RequestInit = {}) {
             data,
         }, null, 2));
 
-        const message =
-            data?.message ||
-            data?.details ||
-            data?.error ||
-            data?.errors?.[0]?.message ||
-            'Erro na API Pagar.me.';
+        let message = 'Erro na API Pagar.me.';
+        if (data) {
+            if (data.errors && typeof data.errors === 'object') {
+                const errorMessages: string[] = [];
+                for (const [key, value] of Object.entries(data.errors)) {
+                    if (Array.isArray(value)) {
+                        errorMessages.push(`${key}: ${value.join(', ')}`);
+                    } else if (typeof value === 'string') {
+                        errorMessages.push(`${key}: ${value}`);
+                    } else if (value && typeof value === 'object' && 'message' in value) {
+                        errorMessages.push(`${key}: ${(value as any).message}`);
+                    }
+                }
+                if (errorMessages.length > 0) {
+                    message = errorMessages.join(' | ');
+                } else {
+                    message = data.message || message;
+                }
+            } else if (Array.isArray(data.errors) && data.errors.length > 0) {
+                message = data.errors.map((e: any) => e.message || JSON.stringify(e)).join(' | ');
+            } else {
+                message = data.message || data.details || data.error || message;
+            }
+        }
 
         const error: any = new Error(message);
         error.status = response.status;

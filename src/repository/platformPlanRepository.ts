@@ -12,7 +12,7 @@ export async function listPlatformPlansFromDB(params: {
     where,
     orderBy: [{ sort_order: 'asc' }, { price: 'asc' }],
     include: {
-      features: { orderBy: { sort_order: 'asc' } },
+      platform_plan_features: { orderBy: { sort_order: 'asc' } },
     },
   });
 }
@@ -21,7 +21,7 @@ export async function findPlatformPlanById(id: string) {
   return prisma.platform_plans.findUnique({
     where: { id },
     include: {
-      features: { orderBy: { sort_order: 'asc' } },
+      platform_plan_features: { orderBy: { sort_order: 'asc' } },
     },
   });
 }
@@ -30,7 +30,7 @@ export async function findPlatformPlanByPagarmeId(pagarmeId: string) {
   return prisma.platform_plans.findFirst({
     where: { pagarme_plan_id: pagarmeId },
     include: {
-      features: { orderBy: { sort_order: 'asc' } },
+      platform_plan_features: { orderBy: { sort_order: 'asc' } },
     },
   });
 }
@@ -50,7 +50,7 @@ export async function createPlatformPlanInDB(data: {
   isRecommended?: boolean;
   sortOrder?: number;
   active?: boolean;
-  features?: string[];
+  platform_plan_features?: string[];
 }) {
   return prisma.$transaction(async (tx: any) => {
     const plan = await tx.platform_plans.create({
@@ -72,9 +72,9 @@ export async function createPlatformPlanInDB(data: {
       },
     });
 
-    if (data.features && data.features.length > 0) {
-      await tx.platform_plan_features.createMany({
-        data: data.features.map((f, i) => ({
+    if (data.platform_plan_features && data.platform_plan_features.length > 0) {
+      await tx.platform_plan_platform_plan_features.createMany({
+        data: data.platform_plan_features.map((f, i) => ({
           plan_id: plan.id,
           feature: f,
           sort_order: i,
@@ -84,7 +84,7 @@ export async function createPlatformPlanInDB(data: {
 
     return tx.platform_plans.findUnique({
       where: { id: plan.id },
-      include: { features: { orderBy: { sort_order: 'asc' } } },
+      include: { platform_plan_features: { orderBy: { sort_order: 'asc' } } },
     });
   });
 }
@@ -106,7 +106,7 @@ export async function updatePlatformPlanInDB(
     isRecommended?: boolean;
     sortOrder?: number;
     active?: boolean;
-    features?: string[];
+    platform_plan_features?: string[];
   }
 ) {
   const existing = await prisma.platform_plans.findUnique({ where: { id } });
@@ -131,11 +131,11 @@ export async function updatePlatformPlanInDB(
 
     await tx.platform_plans.update({ where: { id }, data: updateData });
 
-    if (data.features !== undefined) {
-      await tx.platform_plan_features.deleteMany({ where: { plan_id: id } });
-      if (data.features.length > 0) {
-        await tx.platform_plan_features.createMany({
-          data: data.features.map((f, i) => ({
+    if (data.platform_plan_features !== undefined) {
+      await tx.platform_plan_platform_plan_features.deleteMany({ where: { plan_id: id } });
+      if (data.platform_plan_features.length > 0) {
+        await tx.platform_plan_platform_plan_features.createMany({
+          data: data.platform_plan_features.map((f, i) => ({
             plan_id: id,
             feature: f,
             sort_order: i,
@@ -146,7 +146,7 @@ export async function updatePlatformPlanInDB(
 
     return tx.platform_plans.findUnique({
       where: { id },
-      include: { features: { orderBy: { sort_order: 'asc' } } },
+      include: { platform_plan_features: { orderBy: { sort_order: 'asc' } } },
     });
   });
 }

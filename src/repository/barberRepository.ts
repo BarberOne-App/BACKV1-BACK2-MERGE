@@ -29,6 +29,12 @@ const barberSelect = {
   },
 } satisfies Prisma.barbersSelect;
 
+const validLinkedBarberUserWhere = (barbershopId: string) =>
+  ({
+    role: "barber",
+    current_barbershop_id: barbershopId,
+  }) satisfies Prisma.usersWhereInput;
+
 /* ── LIST ── */
 export async function listBarbersInBarbershop(params: {
   barbershopId: string;
@@ -38,12 +44,15 @@ export async function listBarbersInBarbershop(params: {
 }) {
   const where: Prisma.barbersWhereInput = {
     barbershop_id: params.barbershopId,
+    user_id: { not: null },
+    users: validLinkedBarberUserWhere(params.barbershopId),
   };
 
   if (params.q) {
     where.OR = [
       { display_name: { contains: params.q, mode: "insensitive" } },
       { specialty: { contains: params.q, mode: "insensitive" } },
+      { users: { name: { contains: params.q, mode: "insensitive" } } },
     ];
   }
 
@@ -53,7 +62,7 @@ export async function listBarbersInBarbershop(params: {
     prisma.barbers.findMany({
       where,
       select: barberSelect,
-      orderBy: { display_name: "asc" },
+      orderBy: { users: { name: "asc" } },
       take: params.limit,
       skip,
     }),
@@ -66,14 +75,23 @@ export async function listBarbersInBarbershop(params: {
 /* ── GET BY ID ── */
 export async function findBarberByIdInBarbershop(barbershopId: string, barberId: string) {
   return prisma.barbers.findFirst({
-    where: { id: barberId, barbershop_id: barbershopId },
+    where: {
+      id: barberId,
+      barbershop_id: barbershopId,
+      user_id: { not: null },
+      users: validLinkedBarberUserWhere(barbershopId),
+    },
     select: barberSelect,
   });
 }
 
 export async function findBarberByUserIdInBarbershop(barbershopId: string, userId: string) {
   return prisma.barbers.findFirst({
-    where: { user_id: userId, barbershop_id: barbershopId },
+    where: {
+      user_id: userId,
+      barbershop_id: barbershopId,
+      users: validLinkedBarberUserWhere(barbershopId),
+    },
     select: barberSelect,
   });
 }
@@ -86,9 +104,50 @@ export async function createBarberInBarbershop(data: {
   photoUrl?: string | null;
   salarioFixo?: number | null;
   commissionPercent?: number | null;
-  userId?: string | null;
+  userId: string;
   serviceIds?: string[];
 }) {
+  const existing = await prisma.barbers.findUnique({
+    where: { user_id: data.userId },
+  });
+
+  if (existing) {
+    await prisma.$transaction(async (tx) => {
+      await tx.barbers.update({
+        where: { id: existing.id },
+        data: {
+          display_name: data.displayName,
+          specialty: data.specialty ?? existing.specialty,
+          photo_url: data.photoUrl ?? existing.photo_url,
+          salary: data.salarioFixo ?? existing.salary,
+          commission_percent: data.commissionPercent ?? existing.commission_percent,
+          barbershop_id: data.barbershopId,
+        },
+      });
+
+      if (data.serviceIds !== undefined) {
+        await tx.barber_services.deleteMany({
+          where: { barber_id: existing.id },
+        });
+
+        if (data.serviceIds.length > 0) {
+          await tx.barber_services.createMany({
+            data: data.serviceIds.map((serviceId) => ({
+              barber_id: existing.id,
+              service_id: serviceId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+    });
+
+    return prisma.barbers.findUnique({
+      where: { id: existing.id },
+      select: barberSelect,
+    });
+  }
+
   return prisma.barbers.create({
     data: {
       barbershop_id: data.barbershopId,
@@ -97,7 +156,7 @@ export async function createBarberInBarbershop(data: {
       photo_url: data.photoUrl ?? null,
       salary: data.salarioFixo ?? 0,
       commission_percent: data.commissionPercent ?? null,
-      user_id: data.userId ?? null,
+      user_id: data.userId,
       barber_services:
         data.serviceIds && data.serviceIds.length > 0
           ? {

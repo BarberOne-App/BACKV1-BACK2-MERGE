@@ -1,6 +1,6 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import path from "path";
 import hbs from "hbs";
 import { fileURLToPath } from "url";
@@ -28,7 +28,6 @@ import superAdminRouter from "./routes/superAdminRouter.js";
 import dashboardRouter from "./routes/dashboardRouter.js";
 import platformPlanRouter from "./routes/platformPlanRouter.js";
 
-dotenv.config();
 const app = express();
 const corsOptions: cors.CorsOptions = { origin: true };
 
@@ -75,4 +74,6 @@ app.use(errorHandler);
 
 
 const port = Number(process.env.PORT || 4000);
-app.listen(port, () => console.log(`API rodando na porta ${port}`));
+app.listen(port, () => {
+  console.log(`API rodando na porta ${port}`);
+});
