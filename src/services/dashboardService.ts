@@ -202,10 +202,17 @@ export async function getDashboardStats(barbershopId: string) {
     total,
   }));
 
+  const getCountId = (
+    count: (typeof barberAppointmentCounts)[number]["_count"]
+  ): number => {
+    if (!count || count === true) return 0;
+    return count.id ?? 0;
+  };
+
   // Mapa de contagem de agendamentos por barbeiro
   const barberCountMap = new Map<string, number>();
   for (const row of barberAppointmentCounts) {
-    if (row.barber_id) barberCountMap.set(row.barber_id, row._count.id);
+    if (row.barber_id) barberCountMap.set(row.barber_id, getCountId(row._count));
   }
 
   const staff = barbers.map((b) => ({
