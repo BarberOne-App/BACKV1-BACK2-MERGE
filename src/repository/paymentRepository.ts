@@ -233,17 +233,35 @@ export async function getPaymentSummary(barbershopId: string) {
       },
       _sum: { amount: true },
     }),
-  ]);
+  ] as const);
 
   const toNum = (v: any) => (v == null ? 0 : typeof v.toNumber === 'function' ? v.toNumber() : Number(v));
 
-  const paid = all.filter((r) => r.status === 'paid' || r.status === 'approved')
-    .reduce((sum, r) => sum + toNum(r._sum?.amount), 0);
-  const pending = all.filter((r) => r.status === 'pending')
-    .reduce((sum, r) => sum + toNum(r._sum?.amount), 0);
-  const refunded = all.filter((r) => r.status === 'refunded')
-    .reduce((sum, r) => sum + toNum(r._sum?.amount), 0);
+  // const paid = all.filter((r) => r.status === 'paid' || r.status === 'approved')
+  //   .reduce((sum, r) => sum + toNum(r._sum?.amount), 0);
+  // const pending = all.filter((r) => r.status === 'pending')
+  //   .reduce((sum, r) => sum + toNum(r._sum?.amount), 0);
+  // const refunded = all.filter((r) => r.status === 'refunded')
+  //   .reduce((sum, r) => sum + toNum(r._sum?.amount), 0);
+  // const todayTotal = toNum(todayPaid._sum?.amount);
+  const getSumAmount = (row: { _sum?: { amount?: any | null } | null }) => {
+    return toNum(row._sum?.amount);
+  };
+
+  const paid = all
+    .filter((r) => r.status === "paid" || r.status === "approved")
+    .reduce((sum, r) => sum + getSumAmount(r), 0);
+
+  const pending = all
+    .filter((r) => r.status === "pending")
+    .reduce((sum, r) => sum + getSumAmount(r), 0);
+
+  const refunded = all
+    .filter((r) => r.status === "refunded")
+    .reduce((sum, r) => sum + getSumAmount(r), 0);
+
   const todayTotal = toNum(todayPaid._sum?.amount);
+
 
   return { paid, pending, refunded, today: todayTotal };
 }

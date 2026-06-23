@@ -167,7 +167,7 @@ export async function getDashboardStats(barbershopId: string) {
         barber_id: "asc",
       }
     }),
-  ]);
+  ] as const);
 
   /* ── Cálculos ── */
 
@@ -202,11 +202,12 @@ export async function getDashboardStats(barbershopId: string) {
     total,
   }));
 
-  const getCountId = (
-    count: (typeof barberAppointmentCounts)[number]["_count"]
-  ): number => {
-    if (!count || count === true) return 0;
-    return count.id ?? 0;
+  const getCountId = (count: unknown): number => {
+    if (!count || typeof count !== "object") return 0;
+
+    const c = count as { id?: number | null };
+
+    return c.id ?? 0;
   };
 
   // Mapa de contagem de agendamentos por barbeiro
