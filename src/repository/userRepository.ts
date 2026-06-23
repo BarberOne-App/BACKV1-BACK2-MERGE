@@ -97,7 +97,14 @@ export async function findUserByIdInBarbershop(barbershopId: string, userId: str
 /* ── CHECK EMAIL ── */
 export async function emailExistsInBarbershop(barbershopId: string, email: string) {
   const user = await prisma.users.findFirst({
-    where: { current_barbershop_id: barbershopId, email },
+    where: {
+      email,
+      user_barbershops: {
+        some: {
+          barbershop_id: barbershopId,
+        },
+      },
+    },
     select: { id: true },
   });
   return !!user;

@@ -1,6 +1,6 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import path from "path";
 import hbs from "hbs";
 import { fileURLToPath } from "url";
@@ -28,7 +28,6 @@ import superAdminRouter from "./routes/superAdminRouter.js";
 import dashboardRouter from "./routes/dashboardRouter.js";
 import platformPlanRouter from "./routes/platformPlanRouter.js";
 
-dotenv.config();
 const app = express();
 const corsOptions: cors.CorsOptions = { origin: true };
 

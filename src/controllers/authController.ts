@@ -20,6 +20,8 @@ import {
   registerBarbershopService,
   registerClientService,
   registerSuperAdminService,
+  forgotPasswordService,
+  resetPasswordService,
 } from "../services/authService.js";
 
 function joiErrors(error: any) {
@@ -118,4 +120,14 @@ export async function logout(_req: Request, res: Response) {
   // Sem blacklist/Redis por ora — o frontend descarta os tokens localmente.
   // Quando houver Redis, invalidar o refresh token aqui.
   return res.status(200).send({ message: "Logout realizado com sucesso" });
+}
+
+export async function forgotPassword(req: Request, res: Response) {
+  const result = await forgotPasswordService(req.body);
+  return res.status(200).send(result);
+}
+
+export async function resetPassword(req: Request, res: Response) {
+  const result = await resetPasswordService(req.body);
+  return res.status(200).send(result);
 }

@@ -65,3 +65,17 @@ export function verifyToken(token: string): TokenPayload {
 export function verifyRefreshToken(token: string): TokenPayload {
   return jwt.verify(token, refreshSecret) as TokenPayload;
 }
+
+/** Gera token para recuperação de senha (1 hora de duração) */
+export function signResetToken(payload: { userId: string }) {
+  return jwt.sign({ ...payload, type: "password-reset" }, secret, { expiresIn: "1h" });
+}
+
+/** Verifica token de recuperação de senha */
+export function verifyResetToken(token: string): { userId: string; type: string } {
+  const decoded = jwt.verify(token, secret) as { userId: string; type: string };
+  if (decoded.type !== "password-reset") {
+    throw new Error("Token inválido");
+  }
+  return decoded;
+}

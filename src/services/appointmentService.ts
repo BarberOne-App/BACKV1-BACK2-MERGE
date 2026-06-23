@@ -22,7 +22,11 @@ import {
   getCommissionPercentByType,
   resolveServiceCommissionType,
 } from "./commissionService.js";
-import { sendAppointmentConfirmedEmail } from "./emailService.js";
+import {
+  sendAppointmentConfirmedEmail,
+  sendAppointmentReceiptEmail,
+  sendNewAppointmentNotificationEmail,
+} from "./emailService.js";
 
 /* ─────────────────── helpers ─────────────────── */
 
@@ -882,6 +886,58 @@ export async function createAppointmentService(params: {
         monthly_barber_id: barberId,
         monthly_barber_set_at: new Date(),
       },
+    });
+  }
+
+  const serviceEmailItems = (created.appointment_services ?? []).map((item: any) => ({
+    name: String(item.service_name || "Serviço"),
+    quantity: Number(item.quantity || 1),
+    unitPrice: decimalToNumber(item.unit_price),
+  }));
+  const productEmailItems = (created.appointment_products ?? []).map((item: any) => ({
+    name: String(item.product_name || "Produto"),
+    quantity: Number(item.quantity || 1),
+    unitPrice: decimalToNumber(item.unit_price) * (1 - decimalToNumber(item.discount_percent) / 100),
+  }));
+  const emailJobs: Promise<void>[] = [];
+
+  if (created.users?.email) {
+    emailJobs.push(sendAppointmentReceiptEmail({
+      to: created.users.email,
+      appointmentId: created.id,
+      clientName: created.users.name,
+      dependentName: created.dependents?.name,
+      barbershopName: created.barbershops.name,
+      barberName: created.barbers?.display_name,
+      startAt: created.start_at,
+      services: serviceEmailItems,
+      products: productEmailItems,
+      totalAmount,
+    }));
+  }
+
+  if (created.barbershops.email) {
+    emailJobs.push(sendNewAppointmentNotificationEmail({
+      to: created.barbershops.email,
+      appointmentId: created.id,
+      barbershopName: created.barbershops.name,
+      clientName: created.users.name,
+      clientEmail: created.users.email,
+      clientPhone: created.users.phone,
+      dependentName: created.dependents?.name,
+      barberName: created.barbers?.display_name,
+      startAt: created.start_at,
+      serviceNames: serviceEmailItems.map((item) => item.name),
+      totalAmount,
+    }));
+  } else {
+    console.warn(`[email] Barbearia ${created.barbershop_id} sem e-mail para notificação de agendamento.`);
+  }
+
+  if (emailJobs.length) {
+    void Promise.allSettled(emailJobs).then((results) => {
+      const failed = results.filter((result) => result.status === "rejected").length;
+      if (failed) console.error(`[email] ${failed} envio(s) do agendamento ${created.id} falharam.`);
     });
   }
 
