@@ -790,7 +790,7 @@ export async function createAppointmentService(params: {
     date,
   );
 
-  const hasConflict = existing.some((appt) => {
+  const hasConflict = existing.some((appt: any) => {
     const existStart = new Date(appt.start_at).getTime();
     const existEnd = new Date(appt.end_at).getTime();
 
@@ -811,7 +811,7 @@ export async function createAppointmentService(params: {
     date,
   });
 
-  const clientHasConflict = existingForClient.some((appt) => {
+  const clientHasConflict = existingForClient.some((appt: any) => {
     const existStart = new Date(appt.start_at).getTime();
     const existEnd = new Date(appt.end_at).getTime();
 
@@ -927,7 +927,7 @@ export async function createAppointmentService(params: {
       dependentName: created.dependents?.name,
       barberName: created.barbers?.display_name,
       startAt: created.start_at,
-      serviceNames: serviceEmailItems.map((item) => item.name),
+      serviceNames: serviceEmailItems.map((item: { name: string; }) => item.name),
       totalAmount,
     }));
   } else {
@@ -1200,7 +1200,7 @@ export async function cancelAppointmentService(params: {
 
   const actorDisplay = await resolveActorDisplayName(params.barbershopId, params.actorRole, params.actorId);
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: any) => {
     const appointmentProducts = await tx.appointment_products.findMany({
       where: { appointment_id: params.appointmentId },
       select: { product_id: true, quantity: true },
@@ -1289,7 +1289,7 @@ export async function getAvailableSlotsService(params: {
     params.date,
   );
 
-  const busy = appointments.map((appointment) => {
+  const busy = appointments.map((appointment: { start_at: Date; end_at: Date; }) => {
     const start = getSaoPauloTimeParts(appointment.start_at);
     const end = getSaoPauloTimeParts(appointment.end_at);
 
@@ -1329,7 +1329,7 @@ export async function getAvailableSlotsService(params: {
     const slotEnd = slotStart + blockedDuration;
 
     const collision = busy.some(
-      (busySlot) => slotStart < busySlot.end && slotEnd > busySlot.start,
+      (busySlot: { start: number; end: number; }) => slotStart < busySlot.end && slotEnd > busySlot.start,
     );
 
     if (!collision) {

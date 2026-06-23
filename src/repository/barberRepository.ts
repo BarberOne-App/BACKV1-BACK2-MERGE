@@ -123,7 +123,7 @@ export async function createBarberInBarbershop(data: {
   });
 
   if (existing) {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.barbers.update({
         where: { id: existing.id },
         data: {
@@ -192,7 +192,7 @@ export async function replaceBarberServices(
 
   const uniqueServiceIds = [...new Set(serviceIds.map((id) => String(id)))];
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: any) => {
     await tx.barber_services.deleteMany({
       where: { barber_id: barberId },
     });

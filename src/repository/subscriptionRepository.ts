@@ -120,7 +120,7 @@ export async function createSubscriptionTx(data: {
   autoRenewal?: boolean;
   cutsPerMonth: number;
 }) {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: any) => {
     const now = new Date();
     const nextBilling = new Date(now);
     nextBilling.setMonth(nextBilling.getMonth() + 1);
@@ -216,7 +216,7 @@ export async function renewSubscriptionTx(
   });
   if (!existing) return null;
 
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: any) => {
     const now = new Date();
     const nextBilling = new Date(now);
     nextBilling.setMonth(nextBilling.getMonth() + 1);

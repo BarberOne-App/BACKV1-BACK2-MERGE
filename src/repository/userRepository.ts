@@ -144,7 +144,7 @@ export async function createUserInBarbershop(data: {
   permissions?: any;
   photoUrl?: string | null;
 }) {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: any) => {
     const user = await tx.users.create({
       data: {
         current_barbershop_id: data.barbershopId,
@@ -189,7 +189,7 @@ export async function updateUserInBarbershop(
   const existing = await findUserByIdInBarbershop(barbershopId, userId);
   if (!existing) return null;
 
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: any) => {
     const user = await tx.users.update({
       where: { id: userId },
       data,
@@ -267,7 +267,7 @@ export async function deleteUserFromBarbershop(barbershopId: string, userId: str
   const existing = await findUserByIdInBarbershop(barbershopId, userId);
   if (!existing) return null;
 
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: any) => {
     const barber = await tx.barbers.findUnique({
       where: { user_id: userId },
     });
