@@ -34,11 +34,11 @@ function serializeUser(user: any) {
     barbershopId: user.current_barbershop_id,
     barbershop: user.barbershops
       ? {
-          id: user.barbershops.id,
-          name: user.barbershops.name,
-          slug: user.barbershops.slug,
-          status: user.barbershops.status,
-        }
+        id: user.barbershops.id,
+        name: user.barbershops.name,
+        slug: user.barbershops.slug,
+        status: user.barbershops.status,
+      }
       : null,
   };
 }
@@ -137,6 +137,24 @@ function buildWhere(params: ListParams): Prisma.barbershopsWhereInput {
 
 async function buildBarbershopMetrics(barbershopId: string) {
   const [appointmentsCount, servicesCount, productsCount, clientsCount, employeesCount] =
+    // await Promise.all([
+    //   prisma.appointments.count({ where: { barbershop_id: barbershopId } }),
+    //   prisma.services.count({ where: { barbershop_id: barbershopId } }),
+    //   prisma.products.count({ where: { barbershop_id: barbershopId } }),
+    //   prisma.users.count({
+    //     where: {
+    //       role: "client",
+    //       user_barbershops: { some: { barbershop_id: barbershopId } },
+    //     },
+    //   }),
+    //   prisma.users.count({
+    //     where: {
+    //       role: { in: ["barber", "receptionist", "admin"] },
+    //       user_barbershops: { some: { barbershop_id: barbershopId } },
+    //     },
+    //   }),
+    // ]);
+
     await prisma.$transaction([
       prisma.appointments.count({ where: { barbershop_id: barbershopId } }),
       prisma.services.count({ where: { barbershop_id: barbershopId } }),
@@ -177,15 +195,25 @@ export async function getSuperAdminDashboardService() {
     pendingBarbershops,
     activeSubscriptions,
     newBarbershopsThisMonth,
-  ] = await prisma.$transaction([
-    prisma.barbershops.count(),
-    prisma.barbershops.count({ where: { status: "active" } }),
-    prisma.barbershops.count({ where: { status: "inactive" } }),
-    prisma.barbershops.count({ where: { status: "blocked" } }),
-    prisma.barbershops.count({ where: { status: "pending" } }),
-    prisma.subscriptions.count({ where: { status: "active" } }),
-    prisma.barbershops.count({ where: { created_at: { gte: startOfMonth } } }),
-  ]);
+  ]
+    //  = await Promise.all([
+    //   prisma.barbershops.count(),
+    //   prisma.barbershops.count({ where: { status: "active" } }),
+    //   prisma.barbershops.count({ where: { status: "inactive" } }),
+    //   prisma.barbershops.count({ where: { status: "blocked" } }),
+    //   prisma.barbershops.count({ where: { status: "pending" } }),
+    //   prisma.subscriptions.count({ where: { status: "active" } }),
+    //   prisma.barbershops.count({ where: { created_at: { gte: startOfMonth } } }),
+    // ]);
+    = await prisma.$transaction([
+      prisma.barbershops.count(),
+      prisma.barbershops.count({ where: { status: "active" } }),
+      prisma.barbershops.count({ where: { status: "inactive" } }),
+      prisma.barbershops.count({ where: { status: "blocked" } }),
+      prisma.barbershops.count({ where: { status: "pending" } }),
+      prisma.subscriptions.count({ where: { status: "active" } }),
+      prisma.barbershops.count({ where: { created_at: { gte: startOfMonth } } }),
+    ]);
 
   return {
     totalBarbershops,
@@ -221,6 +249,35 @@ export async function listSuperAdminUsersService(params: {
   }
 
   const skip = (params.page - 1) * params.limit;
+
+  // const [total, users] = await Promise.all([
+  //   prisma.users.count({ where }),
+  //   prisma.users.findMany({
+  //     where,
+  //     skip,
+  //     take: params.limit,
+  //     orderBy: { created_at: "desc" },
+  //     select: {
+  //       id: true,
+  //       name: true,
+  //       email: true,
+  //       phone: true,
+  //       role: true,
+  //       is_admin: true,
+  //       created_at: true,
+  //       updated_at: true,
+  //       current_barbershop_id: true,
+  //       barbershops: {
+  //         select: {
+  //           id: true,
+  //           name: true,
+  //           slug: true,
+  //           status: true,
+  //         },
+  //       },
+  //     },
+  //   }),
+  // ]);
 
   const [total, users] = await prisma.$transaction([
     prisma.users.count({ where }),
@@ -264,6 +321,31 @@ export async function listSuperAdminBarbershopsService(params: ListParams) {
   const where = buildWhere(params);
   const skip = (params.page - 1) * params.limit;
 
+  // const [total, barbershops] = await Promise.all([
+  //   prisma.barbershops.count({ where }),
+  //   prisma.barbershops.findMany({
+  //     where,
+  //     skip,
+  //     take: params.limit,
+  //     orderBy: {
+  //       [mapSortBy(params.sortBy)]: params.sortOrder,
+  //     },
+  //     select: {
+  //       id: true,
+  //       name: true,
+  //       slug: true,
+  //       cnpj: true,
+  //       email: true,
+  //       phone: true,
+  //       status: true,
+  //       created_at: true,
+  //       blocked_reason: true,
+  //       blocked_at: true,
+  //       deactivated_at: true,
+  //     },
+  //   }),
+  // ]);
+
   const [total, barbershops] = await prisma.$transaction([
     prisma.barbershops.count({ where }),
     prisma.barbershops.findMany({
@@ -288,6 +370,76 @@ export async function listSuperAdminBarbershopsService(params: ListParams) {
       },
     }),
   ]);
+
+
+  // const items = await Promise.all(
+  //   barbershops.map(async (shop) => {
+  //     // Busca o admin user da barbearia
+  //     const adminUser = await prisma.users.findFirst({
+  //       where: {
+  //         role: "admin",
+  //         user_barbershops: { some: { barbershop_id: shop.id } },
+  //       },
+  //       orderBy: { created_at: "asc" },
+  //       select: {
+  //         id: true,
+  //         name: true,
+  //         email: true,
+  //         phone: true,
+  //         created_at: true,
+  //       },
+  //     });
+
+  //     // Busca a subscription do admin (usando seu user_id) na barbearia
+  //     let adminSubscription = null;
+  //     if (adminUser) {
+  //       adminSubscription = await prisma.subscriptions.findFirst({
+  //         where: {
+  //           barbershop_id: shop.id,
+  //           user_id: adminUser.id,
+  //           status: { in: ["active", "paused"] },
+  //         },
+  //         orderBy: [
+  //           { last_billing_at: "desc" },
+  //           { created_at: "desc" },
+  //         ],
+  //         select: {
+  //           id: true,
+  //           status: true,
+  //           created_at: true,
+  //           next_billing_at: true,
+  //           last_billing_at: true,
+  //           subscription_plans: {
+  //             select: {
+  //               id: true,
+  //               name: true,
+  //               price: true,
+  //             },
+  //           },
+  //         },
+  //       });
+  //     }
+
+  //     const metrics = await buildBarbershopMetrics(shop.id);
+
+  //     return {
+  //       id: shop.id,
+  //       name: shop.name,
+  //       slug: shop.slug,
+  //       cnpj: shop.cnpj,
+  //       email: shop.email,
+  //       phone: shop.phone,
+  //       status: shop.status,
+  //       createdAt: shop.created_at,
+  //       blockedReason: shop.blocked_reason,
+  //       blockedAt: shop.blocked_at,
+  //       deactivatedAt: shop.deactivated_at,
+  //       admin: adminUser,
+  //       subscription: adminSubscription || null,
+  //       metrics,
+  //     };
+  //   })
+  // );
 
   const items = await prisma.$transaction(
     barbershops.map(async (shop) => {

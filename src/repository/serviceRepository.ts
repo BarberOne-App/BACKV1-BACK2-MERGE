@@ -56,7 +56,17 @@ export async function listServices(params: {
 
   const skip = (params.page - 1) * params.limit;
 
-  const [items, total] = await prisma.$transaction([
+  // const [items, total] = await Promise.all([
+  //   prisma.services.findMany({
+  //     where,
+  //     orderBy: [{ name: "asc" }],
+  //     take: params.limit,
+  //     skip,
+  //   }),
+  //   prisma.services.count({ where }),
+  // ]);
+
+   const [items, total] = await prisma.$transaction([
     prisma.services.findMany({
       where,
       orderBy: [{ name: "asc" }],

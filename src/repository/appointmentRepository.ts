@@ -88,7 +88,7 @@ export async function listAppointmentsInBarbershop(params: {
   if (params.dateFrom || params.dateTo) {
     where.start_at = {};
     const gteDate = params.dateFrom ? new Date(`${params.dateFrom}T00:00:00-03:00`) : undefined;
-    const lteDate = params.dateTo   ? new Date(`${params.dateTo}T23:59:59-03:00`)   : undefined;
+    const lteDate = params.dateTo ? new Date(`${params.dateTo}T23:59:59-03:00`) : undefined;
     if (gteDate) (where.start_at as Prisma.DateTimeFilter).gte = gteDate;
     if (lteDate) (where.start_at as Prisma.DateTimeFilter).lte = lteDate;
 
@@ -102,6 +102,17 @@ export async function listAppointmentsInBarbershop(params: {
   }
 
   const skip = (params.page - 1) * params.limit;
+
+  // const [items, total] = await Promise.all([
+  //   prisma.appointments.findMany({
+  //     where,
+  //     select: appointmentSelect,
+  //     orderBy: { start_at: "asc" },
+  //     take: params.limit,
+  //     skip,
+  //   }),
+  //   prisma.appointments.count({ where }),
+  // ]);
 
   const [items, total] = await prisma.$transaction([
     prisma.appointments.findMany({
@@ -284,12 +295,12 @@ export async function getClientAppointmentsForDate(params: {
 
   const ownerWhere: Prisma.appointmentsWhereInput = params.dependentId
     ? {
-        dependent_id: params.dependentId,
-      }
+      dependent_id: params.dependentId,
+    }
     : {
-        client_id: params.clientId,
-        dependent_id: null,
-      };
+      client_id: params.clientId,
+      dependent_id: null,
+    };
 
   return prisma.appointments.findMany({
     where: {

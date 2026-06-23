@@ -58,6 +58,17 @@ export async function listBarbersInBarbershop(params: {
 
   const skip = (params.page - 1) * params.limit;
 
+  // const [items, total] = await Promise.all([
+  //   prisma.barbers.findMany({
+  //     where,
+  //     select: barberSelect,
+  //     orderBy: { users: { name: "asc" } },
+  //     take: params.limit,
+  //     skip,
+  //   }),
+  //   prisma.barbers.count({ where }),
+  // ]);
+
   const [items, total] = await prisma.$transaction([
     prisma.barbers.findMany({
       where,
@@ -160,11 +171,11 @@ export async function createBarberInBarbershop(data: {
       barber_services:
         data.serviceIds && data.serviceIds.length > 0
           ? {
-              createMany: {
-                data: data.serviceIds.map((serviceId) => ({ service_id: serviceId })),
-                skipDuplicates: true,
-              },
-            }
+            createMany: {
+              data: data.serviceIds.map((serviceId) => ({ service_id: serviceId })),
+              skipDuplicates: true,
+            },
+          }
           : undefined,
     },
     select: barberSelect,

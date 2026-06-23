@@ -48,6 +48,15 @@ export async function getDashboardStats(barbershopId: string) {
     recentAppointments,
     barbers,
     barberAppointmentCounts,
+    // ] = await Promise.all([
+    //   // Agendamentos hoje (excluindo cancelados e no-show)
+    //   prisma.appointments.count({
+    //     where: {
+    //       barbershop_id: barbershopId,
+    //       start_at: { gte: todayStart, lte: todayEnd },
+    //       status: { in: ["scheduled", "confirmed", "completed"] as any },
+    //     },
+    //   }),
   ] = await prisma.$transaction([
     // Agendamentos hoje (excluindo cancelados e no-show)
     prisma.appointments.count({

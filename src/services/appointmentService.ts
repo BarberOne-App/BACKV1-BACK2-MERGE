@@ -762,7 +762,7 @@ export async function createAppointmentService(params: {
     throw badRequest("Não é possível agendar no passado");
   }
 
-  const [activeSubscription, barbershopSettings] = await prisma.$transaction([
+  const [activeSubscription, barbershopSettings] = await Promise.all([
     findActiveSubscriptionByUser(params.barbershopId, clientId),
     getSettingsByBarbershop(params.barbershopId),
   ]);
@@ -935,7 +935,7 @@ export async function createAppointmentService(params: {
   }
 
   if (emailJobs.length) {
-    void prisma.$transactionSettled(emailJobs).then((results) => {
+    void Promise.allSettled(emailJobs).then((results) => {
       const failed = results.filter((result) => result.status === "rejected").length;
       if (failed) console.error(`[email] ${failed} envio(s) do agendamento ${created.id} falharam.`);
     });
@@ -1027,7 +1027,7 @@ export async function updateAppointmentService(params: {
     const appointmentClientId = existingAppointment.client_id;
 
     if (appointmentClientId && params.data.barberId !== existingAppointment.barber_id) {
-      const [activeSubscription, barbershopSettings] = await prisma.$transaction([
+      const [activeSubscription, barbershopSettings] = await Promise.all([
         findActiveSubscriptionByUser(params.barbershopId, appointmentClientId),
         getSettingsByBarbershop(params.barbershopId),
       ]);

@@ -72,6 +72,17 @@ export async function listUsersInBarbershop(params: {
 
   const skip = (params.page - 1) * params.limit;
 
+  // const [items, total] = await Promise.all([
+  //   prisma.users.findMany({
+  //     where,
+  //     select: userSelect,
+  //     orderBy: { name: "asc" },
+  //     take: params.limit,
+  //     skip,
+  //   }),
+  //   prisma.users.count({ where }),
+  // ]);
+
   const [items, total] = await prisma.$transaction([
     prisma.users.findMany({
       where,

@@ -48,6 +48,17 @@ export async function listSubscriptionsInBarbershop(params: {
   const page = params.page ?? 1;
   const limit = params.limit ?? 20;
 
+  // const [items, total] = await Promise.all([
+  //   prisma.subscriptions.findMany({
+  //     where,
+  //     orderBy: { created_at: "desc" },
+  //     skip: (page - 1) * limit,
+  //     take: limit,
+  //     include: SUB_INCLUDE,
+  //   }),
+  //   prisma.subscriptions.count({ where }),
+  // ]);
+
   const [items, total] = await prisma.$transaction([
     prisma.subscriptions.findMany({
       where,
