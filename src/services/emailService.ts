@@ -1,4 +1,8 @@
+import dns from "dns";
 import nodemailer from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport/index.js";
+
+dns.setDefaultResultOrder("ipv4first");
 
 const SAO_PAULO_TIME_ZONE = "America/Sao_Paulo";
 
@@ -70,10 +74,17 @@ function getTransporter(): nodemailer.Transporter {
   const port = toNumber(portStr, 587);
   const secure = String(secureStr || "false").toLowerCase() === "true";
 
-  transporter = nodemailer.createTransport({
+  console.log(`[email] Host SMTP utilizado: ${host}`);
+  console.log(`[email] Porta utilizada: ${port}`);
+  console.log(`[email] Secure: ${secure ? "habilitado" : "desabilitado"}`);
+  console.log(`[email] Usuario SMTP utilizado: ${user}`);
+  console.log("[email] Conexao SMTP restrita a IPv4 (family: 4)");
+
+  const transportOptions: SMTPTransport.Options & { family: 4 } = {
     host,
     port,
     secure,
+    family: 4,
     requireTLS: port === 587,
     auth: {
       user,
@@ -82,12 +93,14 @@ function getTransporter(): nodemailer.Transporter {
     connectionTimeout: 10000, // Timeout de 10 segundos
     greetingTimeout: 10000,
     socketTimeout: 10000,
-  });
+  };
+
+  transporter = nodemailer.createTransport(transportOptions);
 
   // Verificação assíncrona não-bloqueante para não impedir a inicialização do backend
   transporter.verify((error) => {
     if (error) {
-      console.error("[email] Falha na verificação de conexão SMTP ao inicializar:", error.message || error);
+      logSmtpError(error, "verificação inicial do transporte SMTP");
     } else {
       console.log("[email] Servidor pronto para enviar e-mails via SMTP!");
     }
@@ -98,20 +111,13 @@ function getTransporter(): nodemailer.Transporter {
 
 function logSmtpError(error: any, recipient: string) {
   console.error(`[email] Falha no envio de e-mail para ${recipient}:`);
-  if (error.code) {
-    console.error(`[email] Código do erro SMTP: ${error.code}`);
-  }
-  if (error.command) {
-    console.error(`[email] Comando falho: ${error.command}`);
-  }
+  console.error(`[email] Código do erro SMTP: ${error?.code ?? "não informado"}`);
+  console.error(`[email] Comando falho: ${error?.command ?? "não informado"}`);
   if (error.response) {
     console.error(`[email] Resposta do servidor SMTP: ${error.response}`);
   }
-  if (error.message) {
-    console.error(`[email] Mensagem de erro detalhada: ${error.message}`);
-  } else {
-    console.error(`[email] Detalhes do erro:`, error);
-  }
+  console.error(`[email] Mensagem de erro detalhada: ${error?.message ?? String(error)}`);
+  console.error(`[email] Stack trace completa:\n${error?.stack ?? "não disponível"}`);
 
   // Dicas baseadas no código do erro
   if (error.code === "EAUTH") {
@@ -123,12 +129,22 @@ function logSmtpError(error: any, recipient: string) {
   }
 }
 
+function getEmailFrom(): string {
+  const from = process.env.EMAIL_FROM;
+
+  if (!from) {
+    throw new Error("[email] Configuração de e-mail SMTP inválida: EMAIL_FROM não definido.");
+  }
+
+  return from;
+}
+
 export async function sendWelcomeEmail(params: {
   to: string;
   name: string;
   barbershopName?: string | null;
 }) {
-  const from = process.env.EMAIL_FROM || `BarberOne <${process.env.EMAIL_USER || "contato@barberoneapp.com"}>`;
+  const from = getEmailFrom();
   const context = params.barbershopName
     ? ` Sua conta está vinculada à barbearia ${params.barbershopName}.`
     : "";
@@ -173,7 +189,7 @@ export async function sendAppointmentReceiptEmail(params: {
   products?: AppointmentEmailItem[];
   totalAmount: number;
 }) {
-  const from = process.env.EMAIL_FROM || `BarberOne <${process.env.EMAIL_USER || "contato@barberoneapp.com"}>`;
+  const from = getEmailFrom();
   const { date, time } = formatDateTime(params.startAt);
   const customer = params.dependentName
     ? `${params.dependentName} (responsável: ${params.clientName})`
@@ -232,7 +248,7 @@ export async function sendNewAppointmentNotificationEmail(params: {
   serviceNames: string[];
   totalAmount: number;
 }) {
-  const from = process.env.EMAIL_FROM || `BarberOne <${process.env.EMAIL_USER || "contato@barberoneapp.com"}>`;
+  const from = getEmailFrom();
   const { date, time } = formatDateTime(params.startAt);
   const text = [
     `Novo agendamento recebido na ${params.barbershopName}.`,
@@ -277,7 +293,7 @@ export async function sendAppointmentConfirmedEmail(params: {
   const barber = params.barberName || "seu barbeiro";
   const to = params.to;
 
-  const from = process.env.EMAIL_FROM || `BarberOne <${process.env.EMAIL_USER || "contato@barberoneapp.com"}>`;
+  const from = getEmailFrom();
 
   const text = [
     `Olá, ${displayName}!`,
@@ -311,7 +327,7 @@ export async function sendPasswordResetEmail(params: {
   name: string;
   resetLink: string;
 }) {
-  const from = process.env.EMAIL_FROM || `BarberOne <${process.env.EMAIL_USER || "contato@barberoneapp.com"}>`;
+  const from = getEmailFrom();
 
   const text = [
     `Olá, ${params.name}!`,

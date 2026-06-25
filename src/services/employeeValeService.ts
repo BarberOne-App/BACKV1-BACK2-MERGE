@@ -1,10 +1,11 @@
-import { notFound } from "../errors/index.js";
+import { badRequest, notFound } from "../errors/index.js";
 import {
   createEmployeeVale,
   deleteEmployeeVale,
   findEmployeeValeById,
   listEmployeeVales,
 } from "../repository/employeeValeRepository.js";
+import { getEmployeePayrollSummaryService } from "./employeePaymentService.js";
 
 /* ─────────────── helpers ─────────────── */
 function serialize(vale: any) {
@@ -46,6 +47,8 @@ export async function createEmployeeValeService(params: {
     motivo?: string | null;
     observacao?: string | null;
     data: string;
+    periodStart: string;
+    periodEnd: string;
   };
 }) {
   const dateObj = new Date(params.data.data + "T00:00:00Z");
@@ -57,6 +60,31 @@ export async function createEmployeeValeService(params: {
   ]
     .filter(Boolean)
     .join("\n\n");
+
+  const summary = await getEmployeePayrollSummaryService({
+    barbershopId: params.barbershopId,
+    actorRole: "admin",
+    isAdmin: true,
+    periodStart: params.data.periodStart,
+    periodEnd: params.data.periodEnd,
+    employeeId: params.data.employeeId,
+  });
+  const employeeSummary = summary.items[0];
+
+  if (!employeeSummary) {
+    throw badRequest("Funcionario nao encontrado para este periodo.");
+  }
+
+  const availableCommission = Math.max(
+    Number(employeeSummary.commission || 0) - Number(employeeSummary.totalVales || 0),
+    0,
+  );
+
+  if (params.data.valor > availableCommission) {
+    throw badRequest(
+      `O vale nao pode ultrapassar a comissao disponivel de R$ ${availableCommission.toFixed(2)}.`
+    );
+  }
 
   const created = await createEmployeeVale({
     employeeId: params.data.employeeId,

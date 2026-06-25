@@ -17,6 +17,13 @@ const WEEKDAY_SHORT: Record<number, string> = {
   6: "Sab",
 };
 
+const revenuePaymentFilter = {
+  NOT: [
+    { appointment_id: { not: null }, method: "subscription" as any },
+    { appointment_id: { not: null }, status: "covered" as any },
+  ],
+};
+
 export async function getDashboardStats(barbershopId: string) {
   const now = new Date();
 
@@ -113,6 +120,7 @@ export async function getDashboardStats(barbershopId: string) {
         barbershop_id: barbershopId,
         status: { in: ["paid", "approved", "covered"] as any },
         paid_at: { gte: monthStart, lte: monthEnd },
+        ...revenuePaymentFilter,
       },
       select: { amount: true },
     }),
@@ -123,6 +131,7 @@ export async function getDashboardStats(barbershopId: string) {
         barbershop_id: barbershopId,
         status: { in: ["paid", "approved", "covered"] as any },
         paid_at: { gte: sevenDaysAgo, lte: now },
+        ...revenuePaymentFilter,
       },
       select: { paid_at: true, amount: true },
     }),
