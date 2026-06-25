@@ -28,6 +28,13 @@ const PAYMENT_INCLUDE = {
   },
 } as const;
 
+const REVENUE_PAYMENT_FILTER = {
+  NOT: [
+    { appointment_id: { not: null }, method: "subscription" as any },
+    { appointment_id: { not: null }, status: "covered" as any },
+  ],
+};
+
 /* ───── LIST (com filtros) ───── */
 export async function listPaymentsInBarbershop(params: {
   barbershopId: string;
@@ -178,15 +185,18 @@ export async function syncPaymentStatusByAppointment(
 ) {
   const existing = await prisma.payment_transactions.findFirst({
     where: { barbershop_id: barbershopId, appointment_id: appointmentId },
-    select: { id: true },
+    select: { id: true, method: true },
   });
 
   if (!existing) return null;
 
+  const nextStatus =
+    status === "paid" && existing.method === "subscription" ? "covered" : status;
+
   return prisma.payment_transactions.update({
     where: { id: existing.id },
     data: {
-      status: status as any,
+      status: nextStatus as any,
       paid_at: paidAt ?? null,
       updated_at: new Date(),
     },
@@ -219,7 +229,10 @@ export async function getPaymentSummary(barbershopId: string) {
   const [all, todayPaid] = await prisma.$transaction([
     prisma.payment_transactions.groupBy({
       by: ['status'],
-      where: { barbershop_id: barbershopId },
+      where: {
+        barbershop_id: barbershopId,
+        ...REVENUE_PAYMENT_FILTER,
+      },
       _sum: { amount: true },
       orderBy: {
         status: "asc",
@@ -230,6 +243,7 @@ export async function getPaymentSummary(barbershopId: string) {
         barbershop_id: barbershopId,
         status: { in: ['paid', 'approved'] },
         paid_at: { gte: todayStart, lt: todayEnd },
+        ...REVENUE_PAYMENT_FILTER,
       },
       _sum: { amount: true },
     }),
