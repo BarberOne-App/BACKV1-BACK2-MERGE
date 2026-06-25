@@ -197,6 +197,7 @@ model barbershops {
   barbershop_platform_subscriptions      barbershop_platform_subscriptions?
   barbershop_settings                    barbershop_settings?
   blocked_dates                          blocked_dates[]
+  cash_closings                          cash_closings[]
   dependents                             dependents[]
   employee_payments                      employee_payments[]
   employee_vales                         employee_vales[]
@@ -231,6 +232,26 @@ model blocked_dates {
 
   @@index([barbershop_id], map: "idx_blocked_dates_barbershop")
   @@index([barbershop_id, date], map: "idx_blocked_dates_barbershop_date")
+}
+
+model cash_closings {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barbershop_id    String      @db.Uuid
+  period_start     DateTime    @db.Timestamptz(6)
+  period_end       DateTime    @db.Timestamptz(6)
+  closed_at        DateTime    @default(now()) @db.Timestamptz(6)
+  closed_by        String      @db.Uuid
+  total_amount     Decimal     @default(0) @db.Decimal(12, 2)
+  payment_count    Int         @default(0)
+  totals_by_method Json        @default("{}")
+  payment_ids      Json        @default("[]")
+  note             String?
+  barbershops      barbershops @relation(fields: [barbershop_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_cash_closings_barbershop")
+  users            users       @relation(fields: [closed_by], references: [id], onUpdate: NoAction, map: "fk_cash_closings_closed_by")
+
+  @@index([barbershop_id], map: "idx_cash_closings_barbershop")
+  @@index([barbershop_id, period_start, period_end], map: "idx_cash_closings_period")
+  @@index([barbershop_id, closed_at], map: "idx_cash_closings_closed_at")
 }
 
 model dependents {
@@ -589,6 +610,7 @@ model users {
   appointments                                           appointments[]
   barbers                                                barbers?
   blocked_dates                                          blocked_dates[]
+  cash_closings                                          cash_closings[]
   dependents                                             dependents[]
   employee_payments_employee_payments_employee_idTousers employee_payments[]    @relation("employee_payments_employee_idTousers")
   employee_payments_employee_payments_paid_byTousers     employee_payments[]    @relation("employee_payments_paid_byTousers")
