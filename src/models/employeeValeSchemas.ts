@@ -12,6 +12,16 @@ export const CreateEmployeeValeSchema = joi
       .pattern(/^\d{4}-\d{2}-\d{2}$/)
       .required()
       .messages({ "string.pattern.base": "data deve ser YYYY-MM-DD" }),
+    periodStart: joi
+      .string()
+      .pattern(/^\d{4}-\d{2}-\d{2}$/)
+      .required()
+      .messages({ "string.pattern.base": "periodStart deve ser YYYY-MM-DD" }),
+    periodEnd: joi
+      .string()
+      .pattern(/^\d{4}-\d{2}-\d{2}$/)
+      .required()
+      .messages({ "string.pattern.base": "periodEnd deve ser YYYY-MM-DD" }),
   })
   .options({ abortEarly: false, stripUnknown: true });
 
