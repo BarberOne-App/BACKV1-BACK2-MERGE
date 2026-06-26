@@ -6,6 +6,10 @@ import {
     normalizePagarmeOrder,
     updatePagarmeRecipientService,
 } from '../services/pagarmeOrderService.js';
+import {
+    getPagarmeWithdrawalBalanceService,
+    requestPagarmeWithdrawalService,
+} from '../services/pagarmeWithdrawalService.js';
 import { syncPagarmeSubscriptionWebhook } from '../services/pagarmePlatformSubscriptionService.js';
 import { syncClientPixSubscriptionWebhook } from '../services/pagarmeSubscriptionService.js';
 import prisma from '../database/database.js';
@@ -55,6 +59,27 @@ export async function updatePagarmeRecipientController(req: Request, res: Respon
             recipientId: req.params.recipientId,
         });
         return res.status(200).json(result);
+    } catch (error) {
+        return next(error);
+    }
+}
+
+export async function getPagarmeWithdrawalBalanceController(req: Request, res: Response, next: NextFunction) {
+    try {
+        const result = await getPagarmeWithdrawalBalanceService(req.user!.barbershopId);
+        return res.status(200).json(result);
+    } catch (error) {
+        return next(error);
+    }
+}
+
+export async function requestPagarmeWithdrawalController(req: Request, res: Response, next: NextFunction) {
+    try {
+        const result = await requestPagarmeWithdrawalService({
+            barbershopId: req.user!.barbershopId,
+            amount: Number(req.body?.amount),
+        });
+        return res.status(201).json(result);
     } catch (error) {
         return next(error);
     }
