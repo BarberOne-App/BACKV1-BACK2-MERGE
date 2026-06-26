@@ -4,7 +4,9 @@ import {
   createPagarmeRecipientController,
   getPagarmeOrderStatusController,
   getPagarmeRecipientController,
+  getPagarmeWithdrawalBalanceController,
   pagarmeWebhookController,
+  requestPagarmeWithdrawalController,
   updatePagarmeRecipientController,
 } from '../controllers/pagarmeController.js';
 import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
@@ -18,6 +20,9 @@ router.get('/orders/:orderId/status', requireAuth, getPagarmeOrderStatusControll
 router.post('/recipients', requireAuth, requireAdmin, createPagarmeRecipientController);
 router.get('/recipients/:recipientId', requireAuth, requireAdmin, getPagarmeRecipientController);
 router.put('/recipients/:recipientId', requireAuth, requireAdmin, updatePagarmeRecipientController);
+
+router.get('/withdrawals/balance', requireAuth, requireAdmin, getPagarmeWithdrawalBalanceController);
+router.post('/withdrawals', requireAuth, requireAdmin, requestPagarmeWithdrawalController);
 
 // Essa rota precisa ficar sem requireAuth, porque quem chama é o Pagar.me.
 router.post('/webhook', pagarmeWebhookController);
