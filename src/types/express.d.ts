@@ -20,6 +20,7 @@
 
 
 import "express";
+import { IntegrationContext } from "../modules/integrations/areschat/application/contracts/IntegrationContext.js";
 
 declare global {
   namespace Express {
@@ -34,6 +35,7 @@ declare global {
     }
     interface Request {
       user?: User;
+      integration?: IntegrationContext;
     }
   }
 }
