@@ -28,6 +28,7 @@ import superAdminRouter from "./routes/superAdminRouter.js";
 import dashboardRouter from "./routes/dashboardRouter.js";
 import platformPlanRouter from "./routes/platformPlanRouter.js";
 import cashClosingRouter from "./routes/cashClosingRouter.js";
+import areschatSetupRouter from "./routes/areschatSetupRouter.js";
 import areschatIntegrationRouter from "./modules/integrations/areschat/http/routes/areschatIntegrationRouter.js";
 
 const app = express();
@@ -71,6 +72,7 @@ app.use(superAdminRouter);
 app.use(dashboardRouter);
 app.use(platformPlanRouter);
 app.use(cashClosingRouter);
+app.use(areschatSetupRouter);
 app.use(areschatIntegrationRouter);
 app.use("/pagarme", pagarmeRoutes);
 app.use('/pagarme/subscriptions', pagarmeSubs);

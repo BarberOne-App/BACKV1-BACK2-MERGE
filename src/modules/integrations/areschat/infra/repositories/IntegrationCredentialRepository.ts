@@ -1,8 +1,15 @@
 import crypto from "crypto";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import prisma from "../../../../../database/database.js";
 
 const PROVIDER = "areschat";
 const TOKEN_PREFIX = "areschat";
+
+type DB = PrismaClient | Prisma.TransactionClient;
+
+function dbClient(tx?: Prisma.TransactionClient): DB {
+  return (tx ?? prisma) as DB;
+}
 
 const getTokenPepper = () =>
   String(process.env.INTEGRATION_TOKEN_PEPPER || "").trim();
@@ -31,9 +38,10 @@ export const generateIntegrationToken = () => {
 };
 
 export async function findActiveIntegrationCredentialByToken(token: string) {
+  const db = dbClient();
   const tokenHash = hashIntegrationToken(token);
 
-  return prisma.integration_credentials.findFirst({
+  return db.integration_credentials.findFirst({
     where: {
       provider: PROVIDER,
       token_hash: tokenHash,
@@ -54,7 +62,9 @@ export async function findActiveIntegrationCredentialByToken(token: string) {
 }
 
 export async function touchIntegrationCredentialLastUsed(id: string) {
-  return prisma.integration_credentials.update({
+  const db = dbClient();
+
+  return db.integration_credentials.update({
     where: { id },
     data: {
       last_used_at: new Date(),
@@ -66,7 +76,9 @@ export async function touchIntegrationCredentialLastUsed(id: string) {
 export async function listIntegrationCredentialsByBarbershop(
   barbershopId: string
 ) {
-  return prisma.integration_credentials.findMany({
+  const db = dbClient();
+
+  return db.integration_credentials.findMany({
     where: {
       provider: PROVIDER,
       barbershop_id: barbershopId
@@ -77,13 +89,34 @@ export async function listIntegrationCredentialsByBarbershop(
   });
 }
 
+export async function findLatestActiveIntegrationCredentialByBarbershop(
+  barbershopId: string,
+  tx?: Prisma.TransactionClient
+) {
+  const db = dbClient(tx);
+
+  return db.integration_credentials.findFirst({
+    where: {
+      provider: PROVIDER,
+      barbershop_id: barbershopId,
+      active: true,
+      revoked_at: null
+    },
+    orderBy: {
+      created_at: "desc"
+    }
+  });
+}
+
 export async function createIntegrationCredential(params: {
   barbershopId: string;
   name?: string | null;
+  tx?: Prisma.TransactionClient;
 }) {
+  const db = dbClient(params.tx);
   const token = generateIntegrationToken();
 
-  const credential = await prisma.integration_credentials.create({
+  const credential = await db.integration_credentials.create({
     data: {
       provider: PROVIDER,
       barbershop_id: params.barbershopId,
@@ -100,6 +133,49 @@ export async function createIntegrationCredential(params: {
   };
 }
 
+export async function ensureDefaultIntegrationCredentialForBarbershop(params: {
+  barbershopId: string;
+  barbershopName?: string | null;
+  tx?: Prisma.TransactionClient;
+}) {
+  const db = dbClient(params.tx);
+
+  const existing = await db.integration_credentials.findFirst({
+    where: {
+      provider: PROVIDER,
+      barbershop_id: params.barbershopId,
+      active: true,
+      revoked_at: null
+    },
+    orderBy: {
+      created_at: "desc"
+    }
+  });
+
+  if (existing) {
+    return {
+      credential: existing,
+      token: null,
+      created: false
+    };
+  }
+
+  const credentialName = params.barbershopName?.trim()
+    ? `AresChat - ${params.barbershopName.trim()}`
+    : "AresChat";
+
+  const created = await createIntegrationCredential({
+    barbershopId: params.barbershopId,
+    name: credentialName,
+    tx: params.tx
+  });
+
+  return {
+    ...created,
+    created: true
+  };
+}
+
 export async function revokeIntegrationCredential(params: {
   credentialId: string;
   barbershopId?: string;
@@ -108,6 +184,27 @@ export async function revokeIntegrationCredential(params: {
     where: {
       id: params.credentialId,
       ...(params.barbershopId ? { barbershop_id: params.barbershopId } : {})
+    },
+    data: {
+      active: false,
+      revoked_at: new Date(),
+      updated_at: new Date()
+    }
+  });
+}
+
+export async function revokeActiveIntegrationCredentialsByBarbershop(params: {
+  barbershopId: string;
+  tx?: Prisma.TransactionClient;
+}) {
+  const db = dbClient(params.tx);
+
+  return db.integration_credentials.updateMany({
+    where: {
+      provider: PROVIDER,
+      barbershop_id: params.barbershopId,
+      active: true,
+      revoked_at: null
     },
     data: {
       active: false,

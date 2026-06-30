@@ -1,6 +1,7 @@
 
 import prisma from "../database/database.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { ensureDefaultIntegrationCredentialForBarbershop } from "../modules/integrations/areschat/infra/repositories/IntegrationCredentialRepository.js";
 
 type DB = PrismaClient | Prisma.TransactionClient;
 
@@ -37,7 +38,7 @@ export async function createBarbershop(
   tx?: Prisma.TransactionClient
 ) {
   const db = dbClient(tx);
-  return db.barbershops.create({
+  const barbershop = await db.barbershops.create({
     data: {
       name: data.name,
       slug: data.slug,
@@ -48,6 +49,14 @@ export async function createBarbershop(
     },
     select: { id: true, name: true, slug: true, logo_url: true },
   });
+
+  await ensureDefaultIntegrationCredentialForBarbershop({
+    barbershopId: barbershop.id,
+    barbershopName: barbershop.name,
+    tx,
+  });
+
+  return barbershop;
 }
 
 export async function findUserByEmailInBarbershop(barbershopId: string, email: string, tx?: Prisma.TransactionClient) {
