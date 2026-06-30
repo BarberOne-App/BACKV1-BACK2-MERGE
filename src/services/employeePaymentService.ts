@@ -282,20 +282,24 @@ function buildCommissionByEmployee(
       current.revenue += amount;
       current.services += quantity;
 
-      if (commissionRuleType === "FREE_BARBER" && coveredByPlan) {
+      if (coveredByPlan) {
         appointmentHasSubscriptionService = true;
         appointmentSubscriptionRevenue += amount;
         appointmentSubscriptionPoints += totalServicePoints;
         subscriptionPoolRevenue += amount;
         subscriptionPoolAmount += commissionAmount;
         subscriptionPoolPoints += totalServicePoints;
+
+        if (commissionRuleType === "FIXED_BARBER") {
+          current.subscriptionPoolCommission += commissionAmount;
+        }
       } else {
         current.commissionAmount += commissionAmount;
         current.regularCommissionAmount += commissionAmount;
       }
     }
 
-    if (commissionRuleType === "FREE_BARBER" && appointmentHasSubscriptionService) {
+    if (appointmentHasSubscriptionService) {
       let appointmentIds = subscriptionAppointmentIdsByEmployee.get(employeeId);
       if (!appointmentIds) {
         appointmentIds = new Set<string>();
@@ -347,7 +351,6 @@ function buildCommissionByEmployee(
       const participationPercent = roundMoney(participation * 100);
       const current = totals.get(entry.employeeId) ?? emptyCommissionInfo();
 
-      current.commissionAmount += commissionAmount;
       current.subscriptionPoolCommission = commissionAmount;
       current.subscriptionParticipationPercent = participationPercent;
       current.subscriptionAppointments = entry.appointments;
@@ -363,6 +366,31 @@ function buildCommissionByEmployee(
         points: entry.points,
         participationPercent,
         commissionAmount,
+        revenue: roundMoney(entry.revenue),
+      });
+    }
+  } else {
+    for (const entry of subscriptionAttendanceByEmployee.values()) {
+      const current = totals.get(entry.employeeId) ?? emptyCommissionInfo();
+      const participation = subscriptionPoolAmount > 0
+        ? current.subscriptionPoolCommission / subscriptionPoolAmount
+        : 0;
+      const participationPercent = roundMoney(participation * 100);
+
+      current.subscriptionParticipationPercent = participationPercent;
+      current.subscriptionAppointments = entry.appointments;
+      current.subscriptionPoints = entry.points;
+      current.subscriptionRevenue = roundMoney(entry.revenue);
+      totals.set(entry.employeeId, current);
+
+      distributions.push({
+        employeeId: entry.employeeId,
+        barberId: entry.barberId,
+        barberName: entry.barberName,
+        appointments: entry.appointments,
+        points: entry.points,
+        participationPercent,
+        commissionAmount: roundMoney(current.subscriptionPoolCommission),
         revenue: roundMoney(entry.revenue),
       });
     }
