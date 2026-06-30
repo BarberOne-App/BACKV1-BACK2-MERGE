@@ -72,6 +72,8 @@ function serialize(sub: any) {
     lastBillingAt: sub.last_billing_at,
     endedAt: sub.ended_at,
     paymentMethod: sub.payment_method,
+    hasPagarmeSubscription: Boolean(sub.pagarme_subscription_id),
+    pagarmeSubscriptionId: sub.pagarme_subscription_id ?? null,
     isRecurring: sub.is_recurring,
     autoRenewal: sub.auto_renewal,
     daysOverdue: sub.days_overdue,

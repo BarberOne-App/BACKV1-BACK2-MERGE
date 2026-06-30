@@ -3,9 +3,11 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import { requireAuth, requirePermission } from "../middleware/authMiddleware.js";
 import {
   createProduct,
+  createProductStockMovement,
   deleteProduct,
   getProductById,
   importProducts,
+  listProductStockMovements,
   listProducts,
   reactivateProduct,
   updateProduct,
@@ -18,6 +20,18 @@ const router = Router();
 // router.get("/products/:id", requireAuth, asyncHandler(getProductById));
 
 router.get("/products", requireAuth, asyncHandler(listProducts));
+router.get(
+  "/products/stock-movements",
+  requireAuth,
+  requirePermission("manageProducts"),
+  asyncHandler(listProductStockMovements)
+);
+router.post(
+  "/products/stock-movements",
+  requireAuth,
+  requirePermission("manageProducts"),
+  asyncHandler(createProductStockMovement)
+);
 router.get("/products/:id", requireAuth, asyncHandler(getProductById));
 
 // service já bloqueia se não for admin, mas pode deixar assim mesmo:

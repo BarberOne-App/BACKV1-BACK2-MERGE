@@ -203,6 +203,7 @@ model barbershops {
   employee_vales                         employee_vales[]
   gallery_images                         gallery_images[]
   payment_transactions                   payment_transactions[]
+  product_stock_movements                product_stock_movements[]
   products                               products[]
   saved_cards                            saved_cards[]
   services                               services[]
@@ -431,8 +432,32 @@ model products {
   barbershop_id        String                 @db.Uuid
   appointment_products appointment_products[]
   barbershops          barbershops            @relation(fields: [barbershop_id], references: [id], onUpdate: NoAction, map: "fk_products_barbershop")
+  product_stock_movements product_stock_movements[]
 
   @@index([barbershop_id], map: "idx_products_barbershop_id")
+}
+
+model product_stock_movements {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id     String      @db.Uuid
+  barbershop_id  String      @db.Uuid
+  type           String
+  quantity       Int
+  purchase_price Decimal?    @db.Decimal(12, 2)
+  sale_price     Decimal?    @db.Decimal(12, 2)
+  stock_after    Int
+  occurred_at    DateTime    @default(now()) @db.Timestamptz(6)
+  note           String?
+  created_by     String?     @db.Uuid
+  created_at     DateTime    @default(now()) @db.Timestamptz(6)
+  products       products    @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_product_stock_movements_product")
+  barbershops    barbershops @relation(fields: [barbershop_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_product_stock_movements_barbershop")
+  users          users?      @relation(fields: [created_by], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_product_stock_movements_created_by")
+
+  @@index([barbershop_id], map: "idx_product_stock_movements_barbershop")
+  @@index([barbershop_id, occurred_at], map: "idx_product_stock_movements_date")
+  @@index([product_id], map: "idx_product_stock_movements_product")
+  @@index([type], map: "idx_product_stock_movements_type")
 }
 
 model saved_cards {
@@ -636,6 +661,7 @@ model users {
   employee_vales_employee_vales_created_byTousers        employee_vales[]       @relation("employee_vales_created_byTousers")
   employee_vales_employee_vales_employee_idTousers       employee_vales[]       @relation("employee_vales_employee_idTousers")
   payment_transactions                                   payment_transactions[]
+  product_stock_movements                                product_stock_movements[]
   saved_cards                                            saved_cards[]
   subscriptions                                          subscriptions[]
   user_barbershops                                       user_barbershops[]

@@ -1,12 +1,15 @@
 import { Prisma } from "@prisma/client";
-import { forbidden, notFound } from "../errors/index.js";
+import { badRequest, forbidden, notFound } from "../errors/index.js";
 import {
+  createProductStockMovement,
   createProduct,
   deleteProductById,
   findProductByIdInBarbershop,
+  listProductStockMovementsInBarbershop,
   listProductsInBarbershop,
   reactivateProductById,
   updateProductInBarbershop,
+  type ProductStockMovementType,
 } from "../repository/productsRepository.js";
 
 function decimalToNumber(value: any) {
@@ -35,6 +38,30 @@ function serializeProduct(product: any) {
     createdAt: product.created_at ?? product.createdAt,
     updatedAt: product.updated_at ?? product.updatedAt,
     barbershopId: product.barbershop_id ?? product.barbershopId,
+  };
+}
+
+function getProductCode(productId: string, legacyId?: string | null) {
+  return legacyId || productId.slice(0, 8).toUpperCase();
+}
+
+function serializeProductStockMovement(row: any) {
+  return {
+    id: row.id,
+    productId: row.product_id,
+    productName: row.product_name,
+    productCode: getProductCode(row.product_id, row.product_legacy_id),
+    barbershopId: row.barbershop_id,
+    type: row.type,
+    quantity: row.quantity,
+    purchasePrice: decimalToNumber(row.purchase_price),
+    salePrice: decimalToNumber(row.sale_price),
+    occurredAt: row.occurred_at,
+    note: row.note,
+    createdBy: row.created_by,
+    createdByName: row.created_by_name,
+    createdAt: row.created_at,
+    stockAfter: row.stock_after,
   };
 }
 
@@ -287,5 +314,86 @@ export async function reactivateProductService(params: {
     ok: true,
     product: serializeProduct(reactivated),
     reason: "Produto reativado com sucesso",
+  };
+}
+
+export async function listProductStockMovementsService(params: {
+  barbershopId: string;
+  actorRole: "admin" | "barber" | "client";
+  query?: {
+    productId?: string;
+    type?: ProductStockMovementType;
+    q?: string;
+    limit?: number;
+  };
+}) {
+  if (params.actorRole !== "admin") {
+    throw forbidden("Apenas admin pode acessar estoque");
+  }
+
+  const movements = await listProductStockMovementsInBarbershop({
+    barbershopId: params.barbershopId,
+    productId: params.query?.productId,
+    type: params.query?.type,
+    q: params.query?.q,
+    limit: params.query?.limit,
+  });
+
+  return movements.map(serializeProductStockMovement);
+}
+
+export async function createProductStockMovementService(params: {
+  barbershopId: string;
+  actorId: string;
+  actorRole: "admin" | "barber" | "client";
+  data: {
+    productId: string;
+    type: ProductStockMovementType;
+    quantity: number;
+    purchasePrice?: number | null;
+    salePrice?: number | null;
+    occurredAt?: string | Date;
+    note?: string | null;
+  };
+}) {
+  if (params.actorRole !== "admin") {
+    throw forbidden("Apenas admin pode registrar movimentacao de estoque");
+  }
+
+  const occurredAt = params.data.occurredAt
+    ? new Date(params.data.occurredAt)
+    : new Date();
+
+  if (Number.isNaN(occurredAt.getTime())) {
+    throw badRequest("Data da movimentacao invalida");
+  }
+
+  const result = await createProductStockMovement({
+    barbershopId: params.barbershopId,
+    actorId: params.actorId,
+    productId: params.data.productId,
+    type: params.data.type,
+    quantity: params.data.quantity,
+    purchasePrice:
+      params.data.purchasePrice == null
+        ? null
+        : new Prisma.Decimal(params.data.purchasePrice),
+    salePrice:
+      params.data.salePrice == null
+        ? null
+        : new Prisma.Decimal(params.data.salePrice),
+    occurredAt,
+    note: params.data.note?.trim() || null,
+  });
+
+  if (!result) throw notFound("Produto nao encontrado");
+  if (result.insufficientStock) {
+    throw badRequest("Estoque insuficiente para registrar esta saida");
+  }
+  if (!result.movement) throw badRequest("Nao foi possivel registrar movimentacao");
+
+  return {
+    product: serializeProduct(result.product),
+    movement: serializeProductStockMovement(result.movement),
   };
 }

@@ -15,6 +15,7 @@ type PaymentRow = {
   created_at: Date;
   appointment_start_at: Date | null;
   subscription_plan_name: string | null;
+  status_raw: string | null;
 };
 
 type ClosingRow = {
@@ -61,6 +62,11 @@ function dayRange(date?: string) {
 }
 
 function serializePayment(row: PaymentRow) {
+  const statusRaw = String(row.status_raw || "");
+  const cashOutMatch = statusRaw.match(/^cash_out:([^:]+):(.*)$/);
+  const cashOutCategory = cashOutMatch?.[1] ?? null;
+  const description = cashOutMatch ? cashOutMatch[2] || null : statusRaw || null;
+
   return {
     id: row.id,
     userId: row.user_id,
@@ -74,7 +80,9 @@ function serializePayment(row: PaymentRow) {
     createdAt: row.created_at,
     appointmentStartAt: row.appointment_start_at,
     subscriptionPlanName: row.subscription_plan_name,
-    type: row.appointment_id ? "appointment" : row.subscription_id ? "subscription" : "extra",
+    description,
+    cashOutCategory,
+    type: cashOutCategory ? "cash_out" : row.appointment_id ? "appointment" : row.subscription_id ? "subscription" : "extra",
   };
 }
 
@@ -160,6 +168,7 @@ async function listFinancialPayments(params: {
       p.status::text,
       p.paid_at,
       p.created_at,
+      p.status_raw,
       a.start_at AS appointment_start_at,
       sp.name AS subscription_plan_name
     FROM payment_transactions p

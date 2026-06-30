@@ -3,7 +3,9 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import { requireAuth, requirePermission } from "../middleware/authMiddleware.js";
 import {
   createAppointmentPayment,
+  createCashOut,
   createExtraPayment,
+  createManualSubscriptionPayment,
   createPayment,
   deleteExtraPayment,
   getPaymentById,
@@ -25,6 +27,8 @@ router.get("/payments/:id", requireAuth, asyncHandler(getPaymentById));
 
 // Criar pagamento — admin
 router.post("/payments", requireAuth, requirePermission("managePayments"), asyncHandler(createPayment));
+router.post("/payments/subscriptions/manual", requireAuth, requirePermission("managePayments"), asyncHandler(createManualSubscriptionPayment));
+router.post("/payments/cash-out", requireAuth, requirePermission("managePayments"), asyncHandler(createCashOut));
 
 /* ═══════ Appointment Payments ═══════ */
 
