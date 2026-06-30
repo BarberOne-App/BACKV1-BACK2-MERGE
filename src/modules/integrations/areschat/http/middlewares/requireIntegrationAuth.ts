@@ -1,7 +1,10 @@
 import { NextFunction, Request, Response } from "express";
 import crypto from "crypto";
-import { unauthorized } from "../../../../../errors/index.js";
-import { IntegrationConfigurationError } from "../../domain/errors/IntegrationConfigurationError.js";
+import { forbidden, unauthorized } from "../../../../../errors/index.js";
+import {
+  findActiveIntegrationCredentialByToken,
+  touchIntegrationCredentialLastUsed
+} from "../../infra/repositories/IntegrationCredentialRepository.js";
 
 const getBearerToken = (req: Request) => {
   const auth = req.header("authorization") || "";
@@ -13,57 +16,43 @@ const getBearerToken = (req: Request) => {
   return token;
 };
 
-const getConfiguredToken = () => {
-  const token = String(process.env.ARESCHAT_INTEGRATION_TOKEN || "").trim();
-  if (!token) {
-    throw new IntegrationConfigurationError(
-      "ARESCHAT_INTEGRATION_TOKEN nao configurado"
-    );
-  }
-
-  return token;
-};
-
-const getConfiguredTenantId = () => {
-  const tenantId = String(
-    process.env.ARESCHAT_INTEGRATION_BARBERSHOP_ID || ""
-  ).trim();
-
-  if (!tenantId) {
-    throw new IntegrationConfigurationError(
-      "ARESCHAT_INTEGRATION_BARBERSHOP_ID nao configurado"
-    );
-  }
-
-  return tenantId;
-};
-
 export function requireIntegrationAuth(
   req: Request,
   _res: Response,
   next: NextFunction
 ) {
-  try {
+  void (async () => {
     const receivedToken = getBearerToken(req);
     if (!receivedToken) {
       return next(unauthorized("Token de integracao ausente"));
     }
 
-    const configuredToken = getConfiguredToken();
-    if (receivedToken !== configuredToken) {
-      return next(unauthorized("Token de integracao invalido"));
+    const credential = await findActiveIntegrationCredentialByToken(
+      receivedToken
+    );
+
+    if (credential) {
+      const status = String(credential.barbershops?.status || "");
+      if (status === "blocked" || status === "inactive") {
+        return next(forbidden("Barbearia indisponivel para integracao"));
+      }
+
+      req.integration = {
+        provider: "areschat",
+        tenantId: credential.barbershop_id,
+        credentialId: credential.id,
+        requestId:
+          req.header("x-request-id") ||
+          `areschat_${crypto.randomUUID().replace(/-/g, "")}`
+      };
+
+      void touchIntegrationCredentialLastUsed(credential.id).catch(error => {
+        console.error("[areschat] Falha ao atualizar last_used_at", error);
+      });
+
+      return next();
     }
 
-    req.integration = {
-      provider: "areschat",
-      tenantId: getConfiguredTenantId(),
-      requestId:
-        req.header("x-request-id") ||
-        `areschat_${crypto.randomUUID().replace(/-/g, "")}`
-    };
-
-    return next();
-  } catch (error) {
-    return next(error);
-  }
+    return next(unauthorized("Token de integracao invalido"));
+  })().catch(error => next(error));
 }

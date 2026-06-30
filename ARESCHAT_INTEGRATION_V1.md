@@ -8,7 +8,7 @@ Base inicial criada:
 
 - prefixo versionado: `/api/integrations/areschat/v1`
 - autenticacao machine-to-machine por bearer token
-- resolucao fixa de tenant por ambiente
+- resolucao de tenant por token salvo em `integration_credentials`
 - endpoints iniciais:
   - `GET /health`
   - `GET /services`
@@ -22,22 +22,23 @@ Base inicial criada:
   - `POST /appointments/:id/cancel`
   - `POST /customers/eligibility`
 
-## Variaveis de ambiente iniciais
+## Variaveis de ambiente
 
 ```env
-ARESCHAT_INTEGRATION_TOKEN=seu_token_forte
-ARESCHAT_INTEGRATION_BARBERSHOP_ID=uuid_da_barbearia
+INTEGRATION_TOKEN_PEPPER=valor_forte_e_estavel_por_ambiente
 ```
 
 ## Decisao atual
 
-Nesta primeira fase, a autenticacao da integracao foi feita por ambiente para acelerar a homologacao.
+A integracao agora usa o modelo multi-tenant por credencial:
 
-Evolucao recomendada:
+- cada barbearia possui uma ou mais credenciais de integracao
+- o AresChat envia apenas o Bearer Token
+- o BarberOne identifica o `barbershop_id` pelo hash do token
+- o token real nao fica salvo no banco
+- tokens podem ser revogados e rotacionados
 
-- criar tabela `integration_credentials`
-- armazenar token com hash
-- permitir rotacao e revogacao
+Para detalhes operacionais, ver `ARESCHAT_MULTI_TENANT_SETUP.md`.
 
 ## Contrato inicial
 

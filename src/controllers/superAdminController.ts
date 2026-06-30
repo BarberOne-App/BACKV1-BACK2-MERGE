@@ -4,6 +4,8 @@ import {
   SuperAdminListBarbershopsQuerySchema,
   SuperAdminUpdateBarbershopStatusSchema,
   SuperAdminListUsersQuerySchema,
+  SuperAdminCreateIntegrationCredentialSchema,
+  SuperAdminIntegrationCredentialIdParamSchema,
   SuperAdminUpdateUserSchema,
   SuperAdminUserIdParamSchema,
 } from "../models/superAdminSchemas.js";
@@ -17,6 +19,11 @@ import {
   resetUserPasswordService,
   updateSuperAdminUserService,
 } from "../services/superAdminService.js";
+import {
+  CreateIntegrationCredentialUseCase,
+  ListIntegrationCredentialsUseCase,
+  RevokeIntegrationCredentialUseCase,
+} from "../modules/integrations/areschat/application/useCases/ManageIntegrationCredentialsUseCase.js";
 
 function joiErrors(error: any) {
   return error.details?.map((d: any) => d.message) ?? ["Dados inválidos"];
@@ -135,6 +142,60 @@ export async function updateSuperAdminBarbershopStatus(req: Request, res: Respon
     barbershopId: req.params.id,
     status: b.value.status,
     reason: b.value.reason || null,
+  });
+
+  return res.status(200).send(result);
+}
+
+export async function listSuperAdminBarbershopIntegrationCredentials(
+  req: Request,
+  res: Response
+) {
+  const { error } = SuperAdminBarbershopIdParamSchema.validate(req.params, {
+    abortEarly: false,
+  });
+
+  if (error) return res.status(422).send(joiErrors(error));
+
+  const result = await ListIntegrationCredentialsUseCase(req.params.id);
+  return res.status(200).send(result);
+}
+
+export async function createSuperAdminBarbershopIntegrationCredential(
+  req: Request,
+  res: Response
+) {
+  const p = SuperAdminBarbershopIdParamSchema.validate(req.params, {
+    abortEarly: false,
+  });
+  if (p.error) return res.status(422).send(joiErrors(p.error));
+
+  const b = SuperAdminCreateIntegrationCredentialSchema.validate(req.body, {
+    abortEarly: false,
+  });
+  if (b.error) return res.status(422).send(joiErrors(b.error));
+
+  const result = await CreateIntegrationCredentialUseCase({
+    barbershopId: req.params.id,
+    name: b.value.name || null,
+  });
+
+  return res.status(201).send(result);
+}
+
+export async function revokeSuperAdminIntegrationCredential(
+  req: Request,
+  res: Response
+) {
+  const { error } = SuperAdminIntegrationCredentialIdParamSchema.validate(
+    req.params,
+    { abortEarly: false }
+  );
+
+  if (error) return res.status(422).send(joiErrors(error));
+
+  const result = await RevokeIntegrationCredentialUseCase({
+    credentialId: req.params.credentialId,
   });
 
   return res.status(200).send(result);

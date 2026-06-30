@@ -55,6 +55,12 @@ export const SuperAdminUserIdParamSchema = joi
   })
   .options({ abortEarly: false, stripUnknown: true });
 
+export const SuperAdminIntegrationCredentialIdParamSchema = joi
+  .object({
+    credentialId: joi.string().uuid().required(),
+  })
+  .options({ abortEarly: false, stripUnknown: true });
+
 export const SuperAdminUpdateUserSchema = joi
   .object({
     email: joi.string().trim().lowercase().email().optional(),
@@ -62,4 +68,10 @@ export const SuperAdminUpdateUserSchema = joi
     newPassword: joi.string().min(4).max(120).optional(),
   })
   .min(1)
+  .options({ abortEarly: false, stripUnknown: true });
+
+export const SuperAdminCreateIntegrationCredentialSchema = joi
+  .object({
+    name: joi.string().trim().min(2).max(120).allow("", null).optional(),
+  })
   .options({ abortEarly: false, stripUnknown: true });

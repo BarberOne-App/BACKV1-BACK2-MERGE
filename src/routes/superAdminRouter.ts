@@ -10,6 +10,9 @@ import {
   updateSuperAdminUser,
   updateSuperAdminBarbershopStatus,
   resetUserPassword,
+  listSuperAdminBarbershopIntegrationCredentials,
+  createSuperAdminBarbershopIntegrationCredential,
+  revokeSuperAdminIntegrationCredential,
 } from "../controllers/superAdminController.js";
 
 const router = Router();
@@ -47,6 +50,27 @@ router.patch(
   requireAuth,
   requireSuperAdmin,
   asyncHandler(updateSuperAdminBarbershopStatus)
+);
+
+router.get(
+  "/super-admin/barbershops/:id/integration-credentials",
+  requireAuth,
+  requireSuperAdmin,
+  asyncHandler(listSuperAdminBarbershopIntegrationCredentials)
+);
+
+router.post(
+  "/super-admin/barbershops/:id/integration-credentials",
+  requireAuth,
+  requireSuperAdmin,
+  asyncHandler(createSuperAdminBarbershopIntegrationCredential)
+);
+
+router.patch(
+  "/super-admin/integration-credentials/:credentialId/revoke",
+  requireAuth,
+  requireSuperAdmin,
+  asyncHandler(revokeSuperAdminIntegrationCredential)
 );
 
 router.get(
