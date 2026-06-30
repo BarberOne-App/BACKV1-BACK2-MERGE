@@ -110,6 +110,33 @@ function buildSaoPauloDateTime(date: string, time: string) {
   return new Date(`${date}T${time}:00-03:00`);
 }
 
+function serializeClientSubscription(a: any) {
+  const subscriptions = Array.isArray(a.users?.subscriptions) ? a.users.subscriptions : [];
+  const sameBarbershopSubscriptions = subscriptions.filter(
+    (sub: any) => String(sub.barbershop_id) === String(a.barbershop_id),
+  );
+
+  const selected =
+    sameBarbershopSubscriptions.find((sub: any) => sub.status === "active" || sub.status === "paused") ??
+    sameBarbershopSubscriptions[0] ??
+    null;
+
+  if (!selected) return null;
+
+  return {
+    id: selected.id,
+    status: selected.status,
+    daysOverdue: Number(selected.days_overdue ?? 0),
+    nextBillingAt: selected.next_billing_at ?? null,
+    plan: selected.subscription_plans
+      ? {
+        id: selected.subscription_plans.id,
+        name: selected.subscription_plans.name,
+      }
+      : null,
+  };
+}
+
 function serializeAppointment(a: any) {
   const barberCommissionPercent =
     a.barbers?.commission_percent != null
@@ -204,6 +231,7 @@ function serializeAppointment(a: any) {
         name: a.users.name,
         email: a.users.email,
         phone: a.users.phone,
+        subscription: serializeClientSubscription(a),
       }
       : null,
     dependent: a.dependents

@@ -18,7 +18,25 @@ const appointmentSelect = {
     select: { id: true, display_name: true, photo_url: true, commission_percent: true },
   },
   users: {
-    select: { id: true, name: true, email: true, phone: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      subscriptions: {
+        select: {
+          id: true,
+          barbershop_id: true,
+          status: true,
+          days_overdue: true,
+          next_billing_at: true,
+          subscription_plans: {
+            select: { id: true, name: true },
+          },
+        },
+        orderBy: { created_at: "desc" },
+      },
+    },
   },
   dependents: {
     select: { id: true, name: true, age: true },
