@@ -44,3 +44,20 @@ export const ListProductsQuerySchema = Joi.object({
   category: Joi.string().trim().optional(),
   q: Joi.string().trim().max(120).optional(),
 }).unknown(true);
+
+export const CreateProductStockMovementSchema = Joi.object({
+  productId: Joi.string().uuid().required(),
+  type: Joi.string().valid("entry", "exit").required(),
+  quantity: Joi.number().integer().min(1).required(),
+  purchasePrice: Joi.number().precision(2).min(0).allow(null).optional(),
+  salePrice: Joi.number().precision(2).min(0).allow(null).optional(),
+  occurredAt: Joi.date().iso().optional(),
+  note: Joi.string().trim().allow("", null).max(500).optional(),
+}).required();
+
+export const ListProductStockMovementsQuerySchema = Joi.object({
+  productId: Joi.string().uuid().optional(),
+  type: Joi.string().valid("entry", "exit").optional(),
+  q: Joi.string().trim().max(120).optional(),
+  limit: Joi.number().integer().min(1).max(100).optional(),
+}).unknown(true);
