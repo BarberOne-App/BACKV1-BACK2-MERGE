@@ -239,6 +239,9 @@ export async function createManualSubscriptionPaymentService(params: {
 
     if (!subscription) throw notFound("Assinatura nao encontrada");
     if (!subscription.user_id) throw badRequest("Assinatura sem cliente vinculado.");
+    if (subscription.pagarme_subscription_id) {
+      throw badRequest("Esta assinatura possui recorrencia ativa no Pagar.me. Cancele ou altere a recorrencia no Pagar.me antes de registrar pagamento presencial para evitar cobranca duplicada.");
+    }
 
     const currentNextBilling = subscription.next_billing_at
       ? new Date(subscription.next_billing_at)
@@ -325,6 +328,41 @@ export async function createManualSubscriptionPaymentService(params: {
     });
 
     return payment;
+  });
+
+  return serialize(created);
+}
+
+export async function createCashOutService(params: {
+  barbershopId: string;
+  data: {
+    category: "products" | "employees" | "refunds" | "other";
+    amount: number;
+    method: string;
+    description?: string | null;
+    paidAt?: Date | string;
+  };
+}) {
+  const amount = Number(params.data.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw badRequest("Valor da saida invalido.");
+  }
+
+  const paidAt = params.data.paidAt ? new Date(params.data.paidAt) : new Date();
+  if (Number.isNaN(paidAt.getTime())) {
+    throw badRequest("Data da saida invalida.");
+  }
+
+  const description = String(params.data.description || "").trim();
+  const statusRaw = `cash_out:${params.data.category}:${description}`;
+
+  const created = await createPaymentInBarbershop({
+    barbershopId: params.barbershopId,
+    amount: -Math.abs(amount),
+    method: params.data.method,
+    status: "paid",
+    statusRaw,
+    paidAt,
   });
 
   return serialize(created);

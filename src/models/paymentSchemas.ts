@@ -33,6 +33,22 @@ export const CreateManualSubscriptionPaymentSchema = joi
   })
   .options({ abortEarly: false, stripUnknown: true });
 
+export const CreateCashOutSchema = joi
+  .object({
+    category: joi
+      .string()
+      .valid("products", "employees", "refunds", "other")
+      .required(),
+    amount: joi.number().min(0.01).required(),
+    method: joi
+      .string()
+      .valid("pix", "debito", "credito", "dinheiro", "local")
+      .required(),
+    description: joi.string().trim().max(255).allow("", null).optional(),
+    paidAt: joi.date().iso().optional(),
+  })
+  .options({ abortEarly: false, stripUnknown: true });
+
 export const UpdatePaymentSchema = joi
   .object({
     status: joi
