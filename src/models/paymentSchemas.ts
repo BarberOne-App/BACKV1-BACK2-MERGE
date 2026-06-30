@@ -21,6 +21,18 @@ export const CreatePaymentSchema = joi
   })
   .options({ abortEarly: false, stripUnknown: true });
 
+export const CreateManualSubscriptionPaymentSchema = joi
+  .object({
+    subscriptionId: joi.string().uuid().required(),
+    amount: joi.number().min(0.01).required(),
+    method: joi
+      .string()
+      .valid("pix", "debito", "credito", "dinheiro", "local")
+      .required(),
+    paidAt: joi.date().iso().optional(),
+  })
+  .options({ abortEarly: false, stripUnknown: true });
+
 export const UpdatePaymentSchema = joi
   .object({
     status: joi

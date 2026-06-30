@@ -1,4 +1,4 @@
-import { forbidden, notFound } from "../errors/index.js";
+import { badRequest, forbidden, notFound } from "../errors/index.js";
 import prisma from "../database/database.js";
 import {
   createPaymentInBarbershop,
@@ -79,6 +79,18 @@ function serialize(p: any) {
     createdAt: p.created_at,
     updatedAt: p.updated_at,
   };
+}
+
+function addOneMonth(date: Date) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + 1);
+  return next;
+}
+
+function monthCycleRange(date: Date) {
+  const periodStart = new Date(date.getUTCFullYear(), date.getUTCMonth(), 1);
+  const periodEnd = new Date(date.getUTCFullYear(), date.getUTCMonth() + 1, 0);
+  return { periodStart, periodEnd };
 }
 
 export async function listPaymentsService(params: {
@@ -189,6 +201,130 @@ export async function createPaymentService(params: {
     amount: params.data.amount,
     method: params.data.method,
     status: params.data.status,
+  });
+
+  return serialize(created);
+}
+
+export async function createManualSubscriptionPaymentService(params: {
+  barbershopId: string;
+  data: {
+    subscriptionId: string;
+    amount: number;
+    method: string;
+    paidAt?: Date | string;
+  };
+}) {
+  const amount = Number(params.data.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw badRequest("Valor do pagamento invalido.");
+  }
+
+  const paidAt = params.data.paidAt ? new Date(params.data.paidAt) : new Date();
+  if (Number.isNaN(paidAt.getTime())) {
+    throw badRequest("Data de pagamento invalida.");
+  }
+
+  const created = await prisma.$transaction(async (tx: any) => {
+    const subscription = await tx.subscriptions.findFirst({
+      where: {
+        id: params.data.subscriptionId,
+        barbershop_id: params.barbershopId,
+      },
+      include: {
+        subscription_plans: true,
+        users: { select: { id: true } },
+      },
+    });
+
+    if (!subscription) throw notFound("Assinatura nao encontrada");
+    if (!subscription.user_id) throw badRequest("Assinatura sem cliente vinculado.");
+
+    const currentNextBilling = subscription.next_billing_at
+      ? new Date(subscription.next_billing_at)
+      : null;
+    const billingBase =
+      currentNextBilling && currentNextBilling > paidAt ? currentNextBilling : paidAt;
+    const nextBilling = addOneMonth(billingBase);
+
+    await tx.subscriptions.update({
+      where: { id: subscription.id },
+      data: {
+        status: "active",
+        payment_method: params.data.method as any,
+        last_billing_at: paidAt,
+        next_billing_at: nextBilling,
+        days_overdue: 0,
+        overdue_notification_sent: false,
+        ended_at: null,
+        updated_at: new Date(),
+      },
+    });
+
+    const { periodStart, periodEnd } = monthCycleRange(paidAt);
+    const existingCycle = await tx.subscription_cycles.findFirst({
+      where: {
+        subscription_id: subscription.id,
+        period_start: periodStart,
+        period_end: periodEnd,
+      },
+      select: { id: true },
+    });
+
+    if (!existingCycle) {
+      await tx.subscription_cycles.create({
+        data: {
+          subscription_id: subscription.id,
+          period_start: periodStart,
+          period_end: periodEnd,
+          cuts_included: subscription.subscription_plans?.cuts_per_month ?? 0,
+          cuts_used: 0,
+        },
+      });
+    }
+
+    const payment = await tx.payment_transactions.create({
+      data: {
+        barbershop_id: params.barbershopId,
+        user_id: subscription.user_id,
+        appointment_id: null,
+        subscription_id: subscription.id,
+        amount,
+        method: params.data.method as any,
+        status: "paid",
+        status_raw: "manual_subscription_payment",
+        paid_at: paidAt,
+      },
+      include: {
+        users: { select: { id: true, name: true, email: true, phone: true } },
+        appointments: {
+          select: {
+            id: true,
+            start_at: true,
+            end_at: true,
+            status: true,
+            barbers: { select: { id: true, display_name: true } },
+            appointment_services: {
+              select: {
+                id: true,
+                service_name: true,
+                unit_price: true,
+                quantity: true,
+              },
+            },
+          },
+        },
+        subscriptions: {
+          select: {
+            id: true,
+            status: true,
+            subscription_plans: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    return payment;
   });
 
   return serialize(created);

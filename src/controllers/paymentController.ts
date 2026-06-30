@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import {
   CreateAppointmentPaymentSchema,
   CreateExtraPaymentSchema,
+  CreateManualSubscriptionPaymentSchema,
   CreatePaymentSchema,
   ListAppointmentPaymentsQuerySchema,
   ListExtraPaymentsQuerySchema,
@@ -12,6 +13,7 @@ import {
 import {
   createAppointmentPaymentService,
   createExtraPaymentService,
+  createManualSubscriptionPaymentService,
   createPaymentService,
   deleteExtraPaymentService,
   getPaymentByIdService,
@@ -96,6 +98,21 @@ export async function createPayment(req: Request, res: Response) {
   if (error) return res.status(422).send(joiErrors(error));
 
   const result = await createPaymentService({
+    barbershopId: req.user!.barbershopId,
+    data: value,
+  });
+
+  return res.status(201).send(result);
+}
+
+export async function createManualSubscriptionPayment(req: Request, res: Response) {
+  const { error, value } = CreateManualSubscriptionPaymentSchema.validate(req.body, {
+    abortEarly: false,
+  });
+
+  if (error) return res.status(422).send(joiErrors(error));
+
+  const result = await createManualSubscriptionPaymentService({
     barbershopId: req.user!.barbershopId,
     data: value,
   });
