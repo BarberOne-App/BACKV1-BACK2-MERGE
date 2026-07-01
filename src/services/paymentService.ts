@@ -150,6 +150,7 @@ export async function listAllPaymentsService(params: {
       userId,
       status: params.query.status,
       method: params.query.method,
+      paymentsPageOnly: true,
       page,
       limit,
     }),

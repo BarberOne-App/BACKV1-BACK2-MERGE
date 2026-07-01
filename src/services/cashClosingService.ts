@@ -228,8 +228,24 @@ export async function getCashClosingPreviewService(params: {
 export async function listCashClosingsService(params: {
   barbershopId: string;
   date?: string;
+  periodStart?: string;
+  periodEnd?: string;
 }) {
-  const range = dayRange(params.date);
+  const range = params.periodStart || params.periodEnd
+    ? {
+        start: params.periodStart ? new Date(params.periodStart) : dayRange(params.date).start,
+        end: params.periodEnd ? new Date(params.periodEnd) : dayRange(params.date).end,
+      }
+    : dayRange(params.date);
+
+  if (Number.isNaN(range.start.getTime()) || Number.isNaN(range.end.getTime())) {
+    throw badRequest("Periodo invalido.");
+  }
+
+  if (range.start > range.end) {
+    throw badRequest("O periodo inicial deve ser menor ou igual ao periodo final.");
+  }
+
   const rows = await prisma.$queryRaw<ClosingRow[]>`
     SELECT
       c.id::text,

@@ -23,6 +23,8 @@ export async function listCashClosings(req: Request, res: Response) {
   const result = await listCashClosingsService({
     barbershopId: req.user!.barbershopId,
     date: value.date,
+    periodStart: value.periodStart,
+    periodEnd: value.periodEnd,
   });
 
   return res.status(200).send(result);
