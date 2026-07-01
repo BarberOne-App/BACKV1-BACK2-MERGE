@@ -44,6 +44,7 @@ export async function listPaymentsInBarbershop(params: {
   status?: string;
   method?: string;
   type?: "subscription" | "appointment" | "extra";
+  paymentsPageOnly?: boolean;
   page?: number;
   limit?: number;
 }) {
@@ -54,6 +55,13 @@ export async function listPaymentsInBarbershop(params: {
   if (params.subscriptionId) where.subscription_id = params.subscriptionId;
   if (params.status) where.status = params.status;
   if (params.method) where.method = params.method;
+  if (params.paymentsPageOnly) {
+    where.user_id = { not: null };
+    where.OR = [
+      { appointment_id: { not: null } },
+      { subscription_id: { not: null } },
+    ];
+  }
 
   if (params.type === "subscription") {
     where.subscription_id = { not: null };

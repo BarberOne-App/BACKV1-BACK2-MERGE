@@ -5,6 +5,8 @@ const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 export const ListCashClosingsQuerySchema = joi
   .object({
     date: joi.string().pattern(datePattern).optional(),
+    periodStart: joi.string().isoDate().optional(),
+    periodEnd: joi.string().isoDate().optional(),
   })
   .options({ abortEarly: false, stripUnknown: true });
 
