@@ -40,6 +40,15 @@ export const SuperAdminUpdateBarbershopStatusSchema = joi
   })
   .options({ abortEarly: false, stripUnknown: true });
 
+export const SuperAdminActivatePixPlatformSubscriptionSchema = joi
+  .object({
+    platformPlanId: joi.string().uuid().required(),
+    paidAt: joi.date().iso().optional(),
+    nextBillingDate: joi.date().iso().optional(),
+    amount: joi.number().min(0).optional(),
+  })
+  .options({ abortEarly: false, stripUnknown: true });
+
 export const SuperAdminListUsersQuerySchema = joi
   .object({
     q: joi.string().trim().allow("", null).optional(),

@@ -47,7 +47,7 @@ type ListParams = {
   q?: string;
   status?: "active" | "inactive" | "blocked" | "pending";
   plan?: string;
-  subscriptionStatus?: "active" | "paused" | "cancelled" | "expired" | "none";
+  subscriptionStatus?: "active" | "paused" | "cancelled" | "expired" | "pending" | "none";
   createdFrom?: string;
   createdTo?: string;
   page: number;
@@ -107,10 +107,9 @@ function buildWhere(params: ListParams): Prisma.barbershopsWhereInput {
   }
 
   if (params.plan) {
-    where.subscriptions = {
-      some: {
-        status: "active",
-        subscription_plans: {
+    where.barbershop_platform_subscriptions = {
+      is: {
+        platform_plans: {
           name: {
             contains: params.plan,
             mode: "insensitive",
@@ -122,17 +121,53 @@ function buildWhere(params: ListParams): Prisma.barbershopsWhereInput {
 
   if (params.subscriptionStatus) {
     if (params.subscriptionStatus === "none") {
-      where.subscriptions = { none: {} };
+      where.barbershop_platform_subscriptions = { is: null };
     } else {
-      where.subscriptions = {
-        some: {
-          status: params.subscriptionStatus,
-        },
+      where.barbershop_platform_subscriptions = {
+        is: { status: params.subscriptionStatus },
       };
     }
   }
 
   return where;
+}
+
+function addBillingInterval(start: Date, plan: { interval: string; interval_count: number }) {
+  const next = new Date(start);
+  const count = Math.max(1, Number(plan.interval_count || 1));
+  const interval = String(plan.interval || "month").toLowerCase();
+
+  if (interval === "day" || interval === "days") next.setDate(next.getDate() + count);
+  else if (interval === "week" || interval === "weeks") next.setDate(next.getDate() + count * 7);
+  else if (interval === "year" || interval === "years") next.setFullYear(next.getFullYear() + count);
+  else next.setMonth(next.getMonth() + count);
+
+  return next;
+}
+
+function serializePlatformSubscription(subscription: any) {
+  if (!subscription) return null;
+
+  return {
+    id: subscription.id,
+    status: subscription.status,
+    selected_plan: subscription.selected_plan,
+    payment_method: subscription.payment_method,
+    amount: subscription.amount,
+    start_date: subscription.start_date,
+    next_billing_date: subscription.next_billing_date,
+    canceled_at: subscription.canceled_at,
+    created_at: subscription.created_at,
+    platform_plans: subscription.platform_plans
+      ? {
+        id: subscription.platform_plans.id,
+        name: subscription.platform_plans.name,
+        price: subscription.platform_plans.price,
+        interval: subscription.platform_plans.interval,
+        interval_count: subscription.platform_plans.interval_count,
+      }
+      : null,
+  };
 }
 
 async function buildBarbershopMetrics(barbershopId: string) {
@@ -211,7 +246,7 @@ export async function getSuperAdminDashboardService() {
       prisma.barbershops.count({ where: { status: "inactive" } }),
       prisma.barbershops.count({ where: { status: "blocked" } }),
       prisma.barbershops.count({ where: { status: "pending" } }),
-      prisma.subscriptions.count({ where: { status: "active" } }),
+      prisma.barbershop_platform_subscriptions.count({ where: { status: "active" } }),
       prisma.barbershops.count({ where: { created_at: { gte: startOfMonth } } }),
     ]);
 
@@ -367,6 +402,11 @@ export async function listSuperAdminBarbershopsService(params: ListParams) {
         blocked_reason: true,
         blocked_at: true,
         deactivated_at: true,
+        barbershop_platform_subscriptions: {
+          include: {
+            platform_plans: true,
+          },
+        },
       },
     }),
   ]);
@@ -434,6 +474,7 @@ export async function listSuperAdminBarbershopsService(params: ListParams) {
         blockedReason: shop.blocked_reason,
         blockedAt: shop.blocked_at,
         deactivatedAt: shop.deactivated_at,
+        platformSubscription: serializePlatformSubscription(shop.barbershop_platform_subscriptions),
         admin: adminUser,
         subscription: adminSubscription || null,
         metrics,
@@ -471,6 +512,11 @@ export async function getSuperAdminBarbershopByIdService(barbershopId: string) {
       stripe_connect_payouts_enabled: true,
       stripe_connect_details_submitted: true,
       stripe_connect_onboarding_completed_at: true,
+      barbershop_platform_subscriptions: {
+        include: {
+          platform_plans: true,
+        },
+      },
       subscriptions: {
         orderBy: { created_at: "desc" },
         take: 10,
@@ -551,6 +597,7 @@ export async function getSuperAdminBarbershopByIdService(barbershopId: string) {
 
   return {
     ...shop,
+    platformSubscription: serializePlatformSubscription(shop.barbershop_platform_subscriptions),
     admin: adminUser,
     subscription: adminSubscription || null,
     metrics,
@@ -629,6 +676,88 @@ export async function updateSuperAdminBarbershopStatusService(params: {
   });
 
   return updated;
+}
+
+export async function activatePixPlatformSubscriptionService(params: {
+  barbershopId: string;
+  platformPlanId: string;
+  paidAt?: string | Date | null;
+  nextBillingDate?: string | Date | null;
+  amount?: number | null;
+}) {
+  const [shop, plan] = await Promise.all([
+    prisma.barbershops.findUnique({
+      where: { id: params.barbershopId },
+      select: { id: true, name: true },
+    }),
+    prisma.platform_plans.findUnique({
+      where: { id: params.platformPlanId },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        interval: true,
+        interval_count: true,
+        active: true,
+      },
+    }),
+  ]);
+
+  if (!shop) throw notFound("Barbearia nÃ£o encontrada");
+  if (!plan || !plan.active) throw notFound("Plano da plataforma nÃ£o encontrado");
+
+  const now = new Date();
+  const paidAt = params.paidAt ? new Date(params.paidAt) : now;
+  const validPaidAt = Number.isNaN(paidAt.getTime()) ? now : paidAt;
+  const requestedNextBillingDate = params.nextBillingDate ? new Date(params.nextBillingDate) : null;
+  const nextBillingDate = requestedNextBillingDate && !Number.isNaN(requestedNextBillingDate.getTime())
+    ? requestedNextBillingDate
+    : addBillingInterval(validPaidAt, plan);
+  const selectedPlan = plan.name.trim().toLowerCase();
+  const amount = params.amount !== undefined && params.amount !== null ? params.amount : plan.price;
+
+  const subscription = await prisma.barbershop_platform_subscriptions.upsert({
+    where: { barbershop_id: params.barbershopId },
+    update: {
+      selected_plan: selectedPlan,
+      platform_plan_id: plan.id,
+      status: "active",
+      payment_method: "pix",
+      amount,
+      start_date: validPaidAt,
+      next_billing_date: nextBillingDate,
+      canceled_at: null,
+      updated_at: now,
+    },
+    create: {
+      barbershop_id: params.barbershopId,
+      selected_plan: selectedPlan,
+      platform_plan_id: plan.id,
+      status: "active",
+      payment_method: "pix",
+      amount,
+      start_date: validPaidAt,
+      next_billing_date: nextBillingDate,
+    },
+    include: {
+      platform_plans: true,
+    },
+  });
+
+  await prisma.barbershops.update({
+    where: { id: params.barbershopId },
+    data: {
+      selected_plan: selectedPlan,
+      platform_subscription_status: "active",
+      status: "active",
+      blocked_reason: null,
+      blocked_at: null,
+      deactivated_at: null,
+      updated_at: now,
+    },
+  });
+
+  return serializePlatformSubscription(subscription);
 }
 
 export async function resetUserPasswordService(params: { userId: string; newPassword?: string }) {
