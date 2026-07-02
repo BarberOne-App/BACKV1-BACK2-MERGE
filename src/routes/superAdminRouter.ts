@@ -9,6 +9,7 @@ import {
   listSuperAdminBarbershopUsers,
   updateSuperAdminUser,
   updateSuperAdminBarbershopStatus,
+  activatePixPlatformSubscription,
   resetUserPassword,
   listSuperAdminBarbershopIntegrationCredentials,
   createSuperAdminBarbershopIntegrationCredential,
@@ -50,6 +51,13 @@ router.patch(
   requireAuth,
   requireSuperAdmin,
   asyncHandler(updateSuperAdminBarbershopStatus)
+);
+
+router.post(
+  "/super-admin/barbershops/:id/platform-subscription/pix/activate",
+  requireAuth,
+  requireSuperAdmin,
+  asyncHandler(activatePixPlatformSubscription)
 );
 
 router.get(

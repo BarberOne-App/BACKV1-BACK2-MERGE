@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import {
   SuperAdminBarbershopIdParamSchema,
+  SuperAdminActivatePixPlatformSubscriptionSchema,
   SuperAdminListBarbershopsQuerySchema,
   SuperAdminUpdateBarbershopStatusSchema,
   SuperAdminListUsersQuerySchema,
@@ -16,6 +17,7 @@ import {
   listSuperAdminUsersService,
   listSuperAdminBarbershopUsersService,
   updateSuperAdminBarbershopStatusService,
+  activatePixPlatformSubscriptionService,
   resetUserPasswordService,
   updateSuperAdminUserService,
 } from "../services/superAdminService.js";
@@ -142,6 +144,28 @@ export async function updateSuperAdminBarbershopStatus(req: Request, res: Respon
     barbershopId: req.params.id,
     status: b.value.status,
     reason: b.value.reason || null,
+  });
+
+  return res.status(200).send(result);
+}
+
+export async function activatePixPlatformSubscription(req: Request, res: Response) {
+  const p = SuperAdminBarbershopIdParamSchema.validate(req.params, {
+    abortEarly: false,
+  });
+  if (p.error) return res.status(422).send(joiErrors(p.error));
+
+  const b = SuperAdminActivatePixPlatformSubscriptionSchema.validate(req.body, {
+    abortEarly: false,
+  });
+  if (b.error) return res.status(422).send(joiErrors(b.error));
+
+  const result = await activatePixPlatformSubscriptionService({
+    barbershopId: req.params.id,
+    platformPlanId: b.value.platformPlanId,
+    paidAt: b.value.paidAt,
+    nextBillingDate: b.value.nextBillingDate,
+    amount: b.value.amount,
   });
 
   return res.status(200).send(result);
