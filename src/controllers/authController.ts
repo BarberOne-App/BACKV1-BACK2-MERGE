@@ -7,7 +7,9 @@ import {
   RegisterClientSchema,
   RefreshTokenSchema,
   RegisterClientGoogleSchema,
-  RegisterSuperAdminSchema
+  RegisterSuperAdminSchema,
+  RequestWhatsAppLoginOtpSchema,
+  VerifyWhatsAppLoginOtpSchema
 } from "../models/authSchemas.js";
 import {
   loginService,
@@ -22,6 +24,8 @@ import {
   registerSuperAdminService,
   forgotPasswordService,
   resetPasswordService,
+  requestWhatsAppLoginOtpService,
+  verifyWhatsAppLoginOtpService,
 } from "../services/authService.js";
 
 function joiErrors(error: any) {
@@ -33,6 +37,22 @@ export async function login(req: Request, res: Response) {
   if (error) return res.status(422).send(joiErrors(error));
 
   const result = await loginService(req.body);
+  return res.status(200).send(result);
+}
+
+export async function requestWhatsAppLoginOtp(req: Request, res: Response) {
+  const { error, value } = RequestWhatsAppLoginOtpSchema.validate(req.body);
+  if (error) return res.status(422).send(joiErrors(error));
+
+  const result = await requestWhatsAppLoginOtpService(value);
+  return res.status(200).send(result);
+}
+
+export async function verifyWhatsAppLoginOtp(req: Request, res: Response) {
+  const { error, value } = VerifyWhatsAppLoginOtpSchema.validate(req.body);
+  if (error) return res.status(422).send(joiErrors(error));
+
+  const result = await verifyWhatsAppLoginOtpService(value);
   return res.status(200).send(result);
 }
 
