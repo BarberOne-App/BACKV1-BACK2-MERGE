@@ -1,5 +1,7 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import axios from "axios";
+import { Prisma } from "@prisma/client";
 import prisma from "../database/database.js";
 import { signToken, signRefreshToken, verifyRefreshToken, signResetToken, verifyResetToken } from "../utils/jwt.js";
 import { sendPasswordResetEmail, sendWelcomeEmail } from "./emailService.js";
@@ -140,6 +142,191 @@ async function getGoogleProfile(accessToken: string) {
 }
 const TRIAL_PERIOD_DAYS = Number(process.env.TRIAL_PERIOD_DAYS || 14);
 
+function normalizePhoneNumber(value: string | null | undefined) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function maskPhoneNumber(phone: string) {
+  if (phone.length <= 4) return "****";
+  return `${phone.slice(0, 2)}*****${phone.slice(-4)}`;
+}
+
+function getOtpTtlMinutes() {
+  const ttl = Number(process.env.WHATSAPP_LOGIN_OTP_TTL_MINUTES || 5);
+  return Number.isFinite(ttl) && ttl > 0 ? ttl : 5;
+}
+
+function getOtpMaxAttempts() {
+  const maxAttempts = Number(process.env.WHATSAPP_LOGIN_OTP_MAX_ATTEMPTS || 5);
+  return Number.isFinite(maxAttempts) && maxAttempts > 0 ? maxAttempts : 5;
+}
+
+function generateOtpCode() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+function hashOtpCode(code: string) {
+  const pepper = String(process.env.WHATSAPP_LOGIN_OTP_PEPPER || process.env.INTEGRATION_TOKEN_PEPPER || "").trim();
+  return crypto.createHash("sha256").update(`${pepper}:${code}`).digest("hex");
+}
+
+function getOutboundTokenSecret() {
+  return String(
+    process.env.ARESCHAT_OUTBOUND_TOKEN_SECRET ||
+      process.env.INTEGRATION_TOKEN_PEPPER ||
+      process.env.JWT_SECRET ||
+      ""
+  ).trim();
+}
+
+function decryptOutboundToken(encryptedToken: string) {
+  const secret = getOutboundTokenSecret();
+  if (!secret) throw serviceUnavailable("Chave de envio AresChat nao configurada");
+
+  const [ivBase64, tagBase64, encryptedBase64] = String(encryptedToken || "").split(":");
+  if (!ivBase64 || !tagBase64 || !encryptedBase64) {
+    throw serviceUnavailable("Token de envio AresChat invalido");
+  }
+
+  const key = crypto.createHash("sha256").update(secret).digest();
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    key,
+    Buffer.from(ivBase64, "base64")
+  );
+  decipher.setAuthTag(Buffer.from(tagBase64, "base64"));
+
+  return Buffer.concat([
+    decipher.update(Buffer.from(encryptedBase64, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+function buildOtpMessage(params: {
+  code: string;
+  minutes: number;
+  name?: string | null;
+  barbershopName?: string | null;
+}) {
+  const template = String(
+    process.env.WHATSAPP_LOGIN_OTP_MESSAGE_TEMPLATE ||
+      "Seu codigo de acesso BarberOne e: {{code}}\n\nEle expira em {{minutes}} minutos. Nao compartilhe este codigo."
+  );
+
+  return template
+    .replace(/{{code}}/g, params.code)
+    .replace(/{{minutes}}/g, String(params.minutes))
+    .replace(/{{name}}/g, params.name || "")
+    .replace(/{{barbershop}}/g, params.barbershopName || "");
+}
+
+async function sendWhatsAppLoginCode(params: {
+  barbershopId: string;
+  phone: string;
+  code: string;
+  minutes: number;
+  name?: string | null;
+  barbershopName?: string | null;
+}) {
+  const prismaAny = prisma as any;
+  const credential = await prismaAny.integration_credentials.findFirst({
+    where: {
+      provider: "areschat",
+      barbershop_id: params.barbershopId,
+      active: true,
+      revoked_at: null,
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+  });
+
+  const apiUrl = String(credential?.send_message_url || "").trim();
+  const apiToken = credential?.whatsapp_token_encrypted
+    ? decryptOutboundToken(credential.whatsapp_token_encrypted)
+    : "";
+
+  if (!apiUrl || !apiToken) {
+    throw serviceUnavailable("Envio de login por WhatsApp nao configurado para esta barbearia");
+  }
+
+  try {
+    await axios.post(
+      apiUrl,
+      {
+        number: params.phone,
+        body: buildOtpMessage(params),
+        saveOnTicket: false,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+  } catch (error: any) {
+    console.error("[whatsapp-login] Falha ao enviar codigo pelo AresChat:", {
+      status: error?.response?.status,
+      message: error?.message,
+    });
+    throw serviceUnavailable("Nao foi possivel enviar o codigo por WhatsApp");
+  }
+}
+
+async function findUserForWhatsAppLogin(params: { phone: string; barbershopId?: string }) {
+  const barbershopFilter = params.barbershopId
+    ? Prisma.sql`AND (u.current_barbershop_id = ${params.barbershopId}::uuid OR ub.barbershop_id = ${params.barbershopId}::uuid)`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT DISTINCT u.id
+    FROM users u
+    LEFT JOIN user_barbershops ub ON ub.user_id = u.id
+    WHERE regexp_replace(coalesce(u.phone, ''), '[^0-9]', '', 'g') = ${params.phone}
+    ${barbershopFilter}
+    ORDER BY u.id
+    LIMIT 2
+  `);
+
+  if (rows.length === 0) {
+    throw notFound("Usuario nao encontrado para este telefone");
+  }
+
+  if (!params.barbershopId && rows.length > 1) {
+    throw badRequest("Informe a barbearia para continuar o login por WhatsApp");
+  }
+
+  const user = await prisma.users.findUnique({
+    where: { id: rows[0].id },
+    include: {
+      barbershops: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          logo_url: true,
+          status: true,
+          created_at: true,
+          platform_subscription_status: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw notFound("Usuario nao encontrado para este telefone");
+  }
+
+  const barbershopId = params.barbershopId || user.current_barbershop_id || user.barbershops?.id;
+  if (!barbershopId) {
+    throw notFound("Usuario nao vinculado a nenhuma barbearia");
+  }
+
+  return { user, barbershopId };
+}
+
 async function findGoogleAuthUser(email: string, googleId: string) {
   return prisma.users.findFirst({
     where: {
@@ -269,6 +456,148 @@ export async function loginService(params: { email: string; password: string; ba
   }
 
   return buildAuthResponse(user);
+}
+
+export async function requestWhatsAppLoginOtpService(params: { phone: string; barbershopId?: string }) {
+  const phone = normalizePhoneNumber(params.phone);
+  if (phone.length < 10 || phone.length > 13) {
+    throw badRequest("Telefone invalido para login por WhatsApp");
+  }
+
+  const { user, barbershopId } = await findUserForWhatsAppLogin({
+    phone,
+    barbershopId: params.barbershopId,
+  });
+
+  const ttlMinutes = getOtpTtlMinutes();
+  const maxAttempts = getOtpMaxAttempts();
+  const code = generateOtpCode();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
+  const prismaAny = prisma as any;
+
+  await prismaAny.whatsapp_login_otps.updateMany({
+    where: {
+      user_id: user.id,
+      barbershop_id: barbershopId,
+      phone,
+      consumed_at: null,
+      expires_at: { gt: now },
+    },
+    data: {
+      consumed_at: now,
+      updated_at: now,
+    },
+  });
+
+  const otp = await prismaAny.whatsapp_login_otps.create({
+    data: {
+      user_id: user.id,
+      barbershop_id: barbershopId,
+      phone,
+      code_hash: hashOtpCode(code),
+      attempts: 0,
+      max_attempts: maxAttempts,
+      expires_at: expiresAt,
+    },
+  });
+
+  try {
+    await sendWhatsAppLoginCode({
+      barbershopId,
+      phone,
+      code,
+      minutes: ttlMinutes,
+      name: user.name,
+      barbershopName: user.barbershops?.name,
+    });
+  } catch (error) {
+    await prismaAny.whatsapp_login_otps.update({
+      where: { id: otp.id },
+      data: { consumed_at: new Date(), updated_at: new Date() },
+    });
+    throw error;
+  }
+
+  return {
+    requestId: otp.id,
+    expiresInMinutes: ttlMinutes,
+    phone: maskPhoneNumber(phone),
+    delivery: {
+      provider: "areschat",
+      status: "queued",
+    },
+  };
+}
+
+export async function verifyWhatsAppLoginOtpService(params: { requestId: string; code: string }) {
+  const code = String(params.code || "").trim();
+  if (!/^\d{6}$/.test(code)) {
+    throw badRequest("Codigo invalido");
+  }
+
+  const now = new Date();
+  const prismaAny = prisma as any;
+  const otp = await prismaAny.whatsapp_login_otps.findUnique({
+    where: { id: params.requestId },
+  });
+
+  if (!otp || otp.consumed_at) {
+    throw unauthorized("Codigo invalido ou expirado");
+  }
+
+  if (new Date(otp.expires_at) <= now) {
+    await prismaAny.whatsapp_login_otps.update({
+      where: { id: otp.id },
+      data: { consumed_at: now, updated_at: now },
+    });
+    throw unauthorized("Codigo invalido ou expirado");
+  }
+
+  if (otp.attempts >= otp.max_attempts) {
+    throw unauthorized("Limite de tentativas excedido");
+  }
+
+  if (hashOtpCode(code) !== otp.code_hash) {
+    const attempts = otp.attempts + 1;
+    await prismaAny.whatsapp_login_otps.update({
+      where: { id: otp.id },
+      data: {
+        attempts,
+        updated_at: now,
+        ...(attempts >= otp.max_attempts ? { consumed_at: now } : {}),
+      },
+    });
+    throw unauthorized("Codigo invalido ou expirado");
+  }
+
+  await prismaAny.whatsapp_login_otps.update({
+    where: { id: otp.id },
+    data: { consumed_at: now, updated_at: now },
+  });
+
+  const user = await prisma.users.update({
+    where: { id: otp.user_id },
+    data: { current_barbershop_id: otp.barbershop_id },
+    include: {
+      barbershops: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          logo_url: true,
+          status: true,
+          created_at: true,
+          platform_subscription_status: true,
+        },
+      },
+    },
+  });
+
+  return {
+    ...buildAuthResponse(user),
+    authMethod: "whatsapp_otp",
+  };
 }
 
 export async function googleAuthService(params: {

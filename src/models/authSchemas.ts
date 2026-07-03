@@ -24,6 +24,20 @@ export const LoginSchema = joi
   })
   .options({ abortEarly: false, stripUnknown: true });
 
+export const RequestWhatsAppLoginOtpSchema = joi
+  .object({
+    phone: joi.string().trim().min(8).required(),
+    barbershopId: joi.string().uuid().optional(),
+  })
+  .options({ abortEarly: false, stripUnknown: true });
+
+export const VerifyWhatsAppLoginOtpSchema = joi
+  .object({
+    requestId: joi.string().uuid().required(),
+    code: joi.string().trim().pattern(/^\d{6}$/).required(),
+  })
+  .options({ abortEarly: false, stripUnknown: true });
+
 export const RegisterClientSchema = joi
   .object({
     slug: slug.required(),

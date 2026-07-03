@@ -1,12 +1,14 @@
 
 import { Router } from "express";
-import { googleAuth, listPublicBarbershops, login, logout, me, refresh, registerBarber, registerBarbershop, registerClient, registerSuperAdmin, switchBarbershop, forgotPassword, resetPassword } from "../controllers/authController.js";
+import { googleAuth, listPublicBarbershops, login, logout, me, refresh, registerBarber, registerBarbershop, registerClient, registerSuperAdmin, switchBarbershop, forgotPassword, resetPassword, requestWhatsAppLoginOtp, verifyWhatsAppLoginOtp } from "../controllers/authController.js";
 import { requireAuth, requirePermission } from "../middleware/authMiddleware.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 
 const router = Router();
 
 router.post("/auth/login", asyncHandler(login));
+router.post("/auth/whatsapp-login/request", asyncHandler(requestWhatsAppLoginOtp));
+router.post("/auth/whatsapp-login/verify", asyncHandler(verifyWhatsAppLoginOtp));
 router.post("/auth/register/barbershop", asyncHandler(registerBarbershop));
 router.post("/barbershops/register", asyncHandler(registerBarbershop));
 router.get("/barbershops/public", asyncHandler(listPublicBarbershops));
