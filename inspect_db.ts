@@ -2,37 +2,22 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("--- BARBERSHOPS ---");
-  const shops = await prisma.barbershops.findMany({
-    select: { id: true, name: true, slug: true }
-  });
-  console.log(JSON.stringify(shops, null, 2));
-
-  console.log("\n--- USERS ---");
-  const users = await prisma.users.findMany({
+  console.log("--- SUBSCRIPTIONS ---");
+  const subs = await prisma.subscriptions.findMany({
     select: {
       id: true,
-      name: true,
-      email: true,
-      role: true,
-      current_barbershop_id: true,
-      user_barbershops: {
-        select: { barbershop_id: true }
-      }
-    }
-  });
-  console.log(JSON.stringify(users, null, 2));
-
-  console.log("\n--- BARBERS ---");
-  const barbers = await prisma.barbers.findMany({
-    select: {
-      id: true,
-      display_name: true,
+      user_id: true,
+      users: { select: { name: true, email: true } },
+      plan_id: true,
+      subscription_plans: { select: { name: true } },
+      status: true,
+      monthly_barber_id: true,
+      barbers: { select: { display_name: true } },
       barbershop_id: true,
-      user_id: true
+      barbershops: { select: { name: true } }
     }
   });
-  console.log(JSON.stringify(barbers, null, 2));
+  console.log(JSON.stringify(subs, null, 2));
 }
 
 main()

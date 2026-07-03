@@ -38,7 +38,7 @@ export const ListBarbersQuerySchema = joi
   .object({
     q: joi.string().trim().max(120).optional(),
     page: joi.number().integer().min(1).optional(),
-    limit: joi.number().integer().min(1).max(100).optional(),
+    limit: joi.number().integer().min(1).max(500).optional(),
     barbershopId: joi.string().uuid().optional(),
   })
   .unknown(true);
