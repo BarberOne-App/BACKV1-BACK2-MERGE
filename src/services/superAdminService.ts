@@ -1,8 +1,9 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../database/database.js";
-import { notFound } from "../errors/index.js";
+import { conflict, notFound } from "../errors/index.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import { phoneExistsForOtherUser } from "../repository/userRepository.js";
 
 function rounds() {
   return Number(process.env.BCRYPT_SALT_ROUNDS || 10);
@@ -800,7 +801,11 @@ export async function updateSuperAdminUserService(params: {
   }
 
   if (params.data.phone !== undefined) {
-    updateData.phone = normalizePhone(params.data.phone);
+    const phone = normalizePhone(params.data.phone);
+    if (phone && await phoneExistsForOtherUser(phone, params.userId)) {
+      throw conflict("Telefone ja cadastrado em outro usuario");
+    }
+    updateData.phone = phone;
   }
 
   if (params.data.newPassword !== undefined) {

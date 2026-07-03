@@ -12,7 +12,9 @@ import {
   listUsersInBarbershop,
   updateUserInBarbershop,
   updateUserPermissions,
+  phoneExistsForOtherUser,
 } from "../repository/userRepository.js";
+import { normalizePhone } from "../utils/phone.js";
 
 function rounds() {
   return Number(process.env.BCRYPT_SALT_ROUNDS || 10);
@@ -72,6 +74,18 @@ function normalizeText(value?: string | null) {
 function normalizeDigits(value?: string | null) {
   const digits = String(value || "").replace(/\D/g, "");
   return digits.length ? digits : null;
+}
+
+async function assertPhoneAvailable(phone?: string | null, excludeUserId?: string | null) {
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) return null;
+
+  const exists = await phoneExistsForOtherUser(normalizedPhone, excludeUserId);
+  if (exists) {
+    throw conflict("Telefone ja cadastrado em outro usuario");
+  }
+
+  return normalizedPhone;
 }
 
 function isAdminRow(row: {
@@ -263,11 +277,13 @@ export async function createUserService(params: {
       ? { ...defaultReceptionistPermissions, ...(params.data.permissions ?? {}) }
       : (params.data.permissions ?? undefined);
 
+  const phone = await assertPhoneAvailable(params.data.phone);
+
   const user = await createUserInBarbershop({
     barbershopId: params.barbershopId,
     name: params.data.name.trim(),
     email,
-    phone: normalizeDigits(params.data.phone),
+    phone,
     cpf: normalizeDigits(params.data.cpf),
     birthDate: params.data.birthDate ?? null,
     role: params.data.role,
@@ -371,6 +387,7 @@ export async function importUsersService(params: {
 
   const emailOccurrences = new Map<string, number>();
   const cpfOccurrences = new Map<string, number>();
+  const phoneOccurrences = new Map<string, number>();
 
   for (const item of preparedRows) {
     if (item.normalized.email) {
@@ -384,6 +401,13 @@ export async function importUsersService(params: {
       cpfOccurrences.set(
         item.normalized.cpf,
         (cpfOccurrences.get(item.normalized.cpf) || 0) + 1
+      );
+    }
+
+    if (item.normalized.phone) {
+      phoneOccurrences.set(
+        item.normalized.phone,
+        (phoneOccurrences.get(item.normalized.phone) || 0) + 1
       );
     }
   }
@@ -441,7 +465,22 @@ export async function importUsersService(params: {
       continue;
     }
 
+    if (normalized.phone && (phoneOccurrences.get(normalized.phone) || 0) > 1) {
+      errors.push({
+        row: rowIndex,
+        email: normalized.email,
+        cpf: normalized.cpf || undefined,
+        code: "CREATE_ERROR",
+        message: "Telefone duplicado na planilha",
+      });
+      continue;
+    }
+
     try {
+      if (normalized.phone) {
+        await assertPhoneAvailable(normalized.phone);
+      }
+
       const emailExists = await emailExistsInBarbershop(
         params.barbershopId,
         normalized.email
@@ -612,7 +651,9 @@ export async function updateUserService(params: {
     updateData.email = email;
   }
 
-  if (params.data.phone !== undefined) updateData.phone = params.data.phone ?? null;
+  if (params.data.phone !== undefined) {
+    updateData.phone = await assertPhoneAvailable(params.data.phone, params.userId);
+  }
 
   if (params.data.cpf !== undefined) {
     if (params.data.cpf !== null) {

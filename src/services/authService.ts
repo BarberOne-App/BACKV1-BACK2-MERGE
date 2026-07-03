@@ -18,6 +18,7 @@ import {
   findUserById,
   findUserByCpf
 } from "../repository/authRepository.js";
+import { phoneExistsForOtherUser } from "../repository/userRepository.js";
 import { expirePlatformSubscription } from "./subscriptionExpirationService.js";
 
 function sendWelcomeEmailAfterRegistration(params: {
@@ -146,6 +147,16 @@ function normalizePhoneNumber(value: string | null | undefined) {
   return String(value || "").replace(/\D/g, "");
 }
 
+async function assertUniqueUserPhone(phone?: string | null, excludeUserId?: string | null) {
+  const normalizedPhone = normalizePhoneNumber(phone);
+  if (!normalizedPhone) return null;
+
+  const exists = await phoneExistsForOtherUser(normalizedPhone, excludeUserId);
+  if (exists) throw conflict("Telefone ja cadastrado em outro usuario");
+
+  return normalizedPhone;
+}
+
 function maskPhoneNumber(phone: string) {
   if (phone.length <= 4) return "****";
   return `${phone.slice(0, 2)}*****${phone.slice(-4)}`;
@@ -242,9 +253,18 @@ async function sendWhatsAppLoginCode(params: {
   });
 
   const apiUrl = String(credential?.send_message_url || "").trim();
-  const apiToken = credential?.whatsapp_token_encrypted
-    ? decryptOutboundToken(credential.whatsapp_token_encrypted)
-    : "";
+  let apiToken = "";
+  try {
+    apiToken = credential?.whatsapp_token_encrypted
+      ? decryptOutboundToken(credential.whatsapp_token_encrypted)
+      : "";
+  } catch (error: any) {
+    console.error("[whatsapp-login] Token de envio AresChat nao pode ser descriptografado:", {
+      barbershopId: params.barbershopId,
+      message: error?.message,
+    });
+    throw serviceUnavailable("Token de envio do AresChat invalido. Configure novamente o token WhatsApp desta barbearia.");
+  }
 
   if (!apiUrl || !apiToken) {
     throw serviceUnavailable("Envio de login por WhatsApp nao configurado para esta barbearia");
@@ -639,7 +659,6 @@ export async function googleAuthService(params: {
 
   const profileData = params.profileData || {};
   const cleanCpf = String(profileData.cpf || "").replace(/\D/g, "") || null;
-  const cleanPhone = String(profileData.phone || "").replace(/\D/g, "") || null;
   const password = String(profileData.password || "").trim();
 
   if (cleanCpf) {
@@ -650,6 +669,8 @@ export async function googleAuthService(params: {
   }
 
   const existingUser = await findGoogleAuthUser(googleProfile.email, googleProfile.googleId);
+  const cleanPhone = await assertUniqueUserPhone(profileData.phone, existingUser?.id);
+
   if (existingUser) {
     const updateData: any = {
       google_id: existingUser.google_id || googleProfile.googleId,
@@ -750,6 +771,7 @@ export async function registerBarbershopService(params: {
   const adminEmail = normalizeEmail(params.adminEmail);
   const slug = slugify(params.slug?.trim() || params.barbershopName);
   const subscriptionBarberRule = normalizeSubscriptionBarberRule(params.subscriptionBarberRule);
+  const adminPhone = await assertUniqueUserPhone(params.adminPhone ?? params.phone);
 
   const passwordHash = await bcrypt.hash(params.password, rounds());
 
@@ -777,7 +799,7 @@ export async function registerBarbershopService(params: {
           barbershopId: shop.id,
           name: params.adminName.trim(),
           email: adminEmail,
-          phone: params.adminPhone ?? params.phone ?? null,
+          phone: adminPhone,
           role: "admin",
           isAdmin: true,
           passwordHash,
@@ -842,6 +864,7 @@ export async function registerClientService(params: {
 }) {
   const slug = params.slug.trim();
   const email = normalizeEmail(params.email);
+  const phone = await assertUniqueUserPhone(params.phone);
 
   const shop = await findBarbershopBySlug(slug);
   if (!shop) throw notFound("Barbearia não encontrada");
@@ -859,7 +882,7 @@ export async function registerClientService(params: {
     name: params.name.trim(),
     email,
     cpf: params.cpf ?? null,
-    phone: params.phone ?? null,
+    phone,
     birthDate: params.birthDate ?? null,
     role: "client",
     isAdmin: false,
@@ -910,6 +933,7 @@ export async function registerBarberService(params: {
   commissionPercent?: number;
 }) {
   const email = normalizeEmail(params.email);
+  const phone = await assertUniqueUserPhone(params.phone);
 
   const existing = await findUserByEmailInBarbershop(params.barbershopId, email);
   if (existing) throw conflict("E-mail já cadastrado nessa barbearia");
@@ -922,7 +946,7 @@ export async function registerBarberService(params: {
         barbershopId: params.barbershopId,
         name: params.name.trim(),
         email,
-        phone: params.phone ?? null,
+        phone,
         role: "barber",
         isAdmin: false,
         passwordHash,

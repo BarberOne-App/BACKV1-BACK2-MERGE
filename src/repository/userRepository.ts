@@ -130,6 +130,24 @@ export async function cpfExistsForOtherUser(cpf: string, excludeUserId: string) 
   return !!user;
 }
 
+/* â”€â”€ CHECK PHONE (global unique by normalized digits) â”€â”€ */
+export async function phoneExistsForOtherUser(phone: string, excludeUserId?: string | null) {
+  const users = await prisma.users.findMany({
+    where: {
+      phone: {
+        not: null,
+      },
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+    },
+    select: {
+      id: true,
+      phone: true,
+    },
+  });
+
+  return users.some(user => String(user.phone || "").replace(/\D/g, "") === phone);
+}
+
 /* ── CREATE ── */
 export async function createUserInBarbershop(data: {
   barbershopId: string;
