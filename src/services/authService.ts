@@ -280,22 +280,40 @@ async function findUserForWhatsAppLogin(params: { phone: string; barbershopId?: 
     ? Prisma.sql`AND (u.current_barbershop_id = ${params.barbershopId}::uuid OR ub.barbershop_id = ${params.barbershopId}::uuid)`
     : Prisma.empty;
 
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT DISTINCT u.id
+  const rows = await prisma.$queryRaw<Array<{ id: string; barbershop_id: string }>>(Prisma.sql`
+    SELECT DISTINCT
+      u.id,
+      COALESCE(u.current_barbershop_id, ub.barbershop_id) AS barbershop_id,
+      CASE
+        WHEN u.current_barbershop_id IS NOT NULL
+          AND u.current_barbershop_id = COALESCE(u.current_barbershop_id, ub.barbershop_id)
+        THEN 1
+        ELSE 0
+      END AS current_priority,
+      CASE
+        WHEN ic.id IS NOT NULL
+          AND ic.send_message_url IS NOT NULL
+          AND ic.whatsapp_token_encrypted IS NOT NULL
+        THEN 1
+        ELSE 0
+      END AS outbound_priority,
+      GREATEST(u.updated_at, COALESCE(ub.created_at, u.created_at)) AS sort_date
     FROM users u
     LEFT JOIN user_barbershops ub ON ub.user_id = u.id
+    LEFT JOIN integration_credentials ic
+      ON ic.barbershop_id = COALESCE(u.current_barbershop_id, ub.barbershop_id)
+      AND ic.provider = 'areschat'
+      AND ic.active = true
+      AND ic.revoked_at IS NULL
     WHERE regexp_replace(coalesce(u.phone, ''), '[^0-9]', '', 'g') = ${params.phone}
+    AND COALESCE(u.current_barbershop_id, ub.barbershop_id) IS NOT NULL
     ${barbershopFilter}
-    ORDER BY u.id
-    LIMIT 2
+    ORDER BY current_priority DESC, outbound_priority DESC, sort_date DESC, u.id
+    LIMIT 1
   `);
 
   if (rows.length === 0) {
     throw notFound("Usuario nao encontrado para este telefone");
-  }
-
-  if (!params.barbershopId && rows.length > 1) {
-    throw badRequest("Informe a barbearia para continuar o login por WhatsApp");
   }
 
   const user = await prisma.users.findUnique({
@@ -319,7 +337,7 @@ async function findUserForWhatsAppLogin(params: { phone: string; barbershopId?: 
     throw notFound("Usuario nao encontrado para este telefone");
   }
 
-  const barbershopId = params.barbershopId || user.current_barbershop_id || user.barbershops?.id;
+  const barbershopId = params.barbershopId || rows[0].barbershop_id || user.current_barbershop_id || user.barbershops?.id;
   if (!barbershopId) {
     throw notFound("Usuario nao vinculado a nenhuma barbearia");
   }
