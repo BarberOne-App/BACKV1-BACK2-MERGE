@@ -219,6 +219,23 @@ model barbershops {
   @@index([status], map: "idx_barbershops_status")
 }
 
+model customer_reviews {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  barbershop_id  String   @db.Uuid
+  appointment_id String?  @db.Uuid
+  barber_id      String   @db.Uuid
+  client_id      String   @db.Uuid
+  rating         Int
+  comment        String?
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([barbershop_id], map: "idx_customer_reviews_barbershop")
+  @@index([barber_id], map: "idx_customer_reviews_barber")
+  @@index([client_id], map: "idx_customer_reviews_client")
+  @@index([created_at], map: "idx_customer_reviews_created_at")
+}
+
 model integration_credentials {
   id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   provider       String

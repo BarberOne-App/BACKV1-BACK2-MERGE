@@ -130,7 +130,7 @@ export async function getBarbershopProfileService(barbershopId: string) {
         throw notFound("Barbearia nao encontrada");
     }
 
-    return mapBarbershopProfile(row);
+    return mapBarbershopProfile(row as any);
 }
 
 export async function updateBarbershopProfileService(params: {
@@ -185,7 +185,7 @@ export async function updateBarbershopProfileService(params: {
 
     const row = await updateBarbershopProfileById(params.barbershopId, updateData);
 
-    return mapBarbershopProfile(row);
+    return mapBarbershopProfile(row as any);
 }
 
 function normalizeSubscriptionBarberRule(value: unknown): "fixed" | "free_choice" {

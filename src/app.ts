@@ -30,6 +30,7 @@ import platformPlanRouter from "./routes/platformPlanRouter.js";
 import cashClosingRouter from "./routes/cashClosingRouter.js";
 import areschatSetupRouter from "./routes/areschatSetupRouter.js";
 import areschatIntegrationRouter from "./modules/integrations/areschat/http/routes/areschatIntegrationRouter.js";
+import customerReviewRouter from "./routes/customerReviewRouter.js";
 
 const app = express();
 const corsOptions: cors.CorsOptions = { origin: true };
@@ -74,6 +75,7 @@ app.use(platformPlanRouter);
 app.use(cashClosingRouter);
 app.use(areschatSetupRouter);
 app.use(areschatIntegrationRouter);
+app.use(customerReviewRouter);
 app.use("/pagarme", pagarmeRoutes);
 app.use('/pagarme/subscriptions', pagarmeSubs);
 app.use(errorHandler);
