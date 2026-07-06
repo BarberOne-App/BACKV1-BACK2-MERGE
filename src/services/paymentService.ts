@@ -48,6 +48,10 @@ function isAppointmentServiceCoveredBySubscription(serviceName: string, activeSu
   return features.some((feature: any) => normalizePlanFeatureText(feature.feature) === normServiceName);
 }
 
+function normalizePaidPaymentMethod(method: string | undefined, status: string | undefined) {
+  return (status === "paid" || status === "approved") && method === "local" ? "dinheiro" : method;
+}
+
 function serialize(p: any) {
   return {
     id: p.id,
@@ -476,7 +480,7 @@ export async function createAppointmentPaymentService(params: {
     userId: params.data.userId,
     appointmentId: params.data.appointmentId,
     amount: params.data.amount,
-    method: params.data.method,
+    method: normalizePaidPaymentMethod(params.data.method, params.data.status),
     status: params.data.status,
   });
 
@@ -602,6 +606,12 @@ export async function updatePaymentService(params: {
 
   if (params.data.status === "paid" && !params.data.paidAt) {
     updateData.paid_at = new Date();
+  }
+
+  const finalStatus = params.data.status ?? existing.status;
+  const finalMethod = params.data.method ?? existing.method;
+  if ((finalStatus === "paid" || finalStatus === "approved") && finalMethod === "local") {
+    updateData.method = "dinheiro";
   }
 
   const updated = await updatePaymentInBarbershop(

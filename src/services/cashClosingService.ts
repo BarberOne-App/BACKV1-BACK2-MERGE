@@ -43,6 +43,23 @@ function roundMoney(value: number) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+function normalizeFinancialMethod(method: string | null | undefined) {
+  return method === "local" ? "dinheiro" : String(method || "dinheiro");
+}
+
+function normalizeTotalsByMethod(rawTotals: any) {
+  const totals: Record<string, number> = {};
+
+  if (!rawTotals || typeof rawTotals !== "object") return totals;
+
+  for (const [method, amount] of Object.entries(rawTotals)) {
+    const normalizedMethod = normalizeFinancialMethod(method);
+    totals[normalizedMethod] = roundMoney((totals[normalizedMethod] ?? 0) + toNumber(amount));
+  }
+
+  return totals;
+}
+
 function toDateInput(date: Date) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
@@ -74,7 +91,7 @@ function serializePayment(row: PaymentRow) {
     appointmentId: row.appointment_id,
     subscriptionId: row.subscription_id,
     amount: roundMoney(toNumber(row.amount)),
-    method: row.method,
+    method: normalizeFinancialMethod(row.method),
     status: row.status,
     paidAt: row.paid_at,
     createdAt: row.created_at,
@@ -96,7 +113,7 @@ function serializeClosing(row: ClosingRow) {
     closedByName: row.closed_by_name,
     totalAmount: roundMoney(toNumber(row.total_amount)),
     paymentCount: Number(row.payment_count || 0),
-    totalsByMethod: row.totals_by_method ?? {},
+    totalsByMethod: normalizeTotalsByMethod(row.totals_by_method),
     paymentIds: row.payment_ids ?? [],
     note: row.note,
   };
