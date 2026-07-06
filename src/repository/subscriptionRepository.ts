@@ -213,6 +213,59 @@ export async function updateSubscriptionInBarbershop(
   });
 }
 
+export async function changeSubscriptionPlanInBarbershop(
+  barbershopId: string,
+  id: string,
+  data: {
+    planId: string;
+    amount: number;
+    paymentMethod?: string | null;
+    cutsPerMonth: number;
+  }
+) {
+  const existing = await prisma.subscriptions.findFirst({
+    where: { id, barbershop_id: barbershopId },
+    include: {
+      subscription_cycles: {
+        orderBy: { period_start: "desc" },
+        take: 1,
+      },
+    },
+  });
+  if (!existing) return null;
+
+  if (existing.pagarme_subscription_id) {
+    throw badRequest("Assinaturas com recorrencia no Pagar.me devem ser alteradas pelo checkout/cobranca externa.");
+  }
+
+  return prisma.$transaction(async (tx: any) => {
+    await tx.subscriptions.update({
+      where: { id },
+      data: {
+        plan_id: data.planId,
+        amount: data.amount,
+        payment_method: data.paymentMethod as any,
+        updated_at: new Date(),
+      },
+    });
+
+    const currentCycle = existing.subscription_cycles?.[0];
+    if (currentCycle) {
+      await tx.subscription_cycles.update({
+        where: { id: currentCycle.id },
+        data: {
+          cuts_included: data.cutsPerMonth,
+        },
+      });
+    }
+
+    return tx.subscriptions.findUnique({
+      where: { id },
+      include: SUB_INCLUDE,
+    });
+  });
+}
+
 /* ───── CANCEL ───── */
 export async function cancelSubscriptionInBarbershop(
   barbershopId: string,

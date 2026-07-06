@@ -3,6 +3,7 @@ import prisma from "../database/database.js";
 import {
   applyOverdueStates,
   cancelSubscriptionInBarbershop,
+  changeSubscriptionPlanInBarbershop,
   createSubscriptionTx,
   findActiveSubscriptionByUser,
   findOverdueSubscriptions,
@@ -149,7 +150,7 @@ function serialize(sub: any) {
           periodEnd: cycle.period_end,
           cutsIncluded: cycle.cuts_included,
           cutsUsed: cycle.cuts_used,
-          cutsRemaining: cycle.cuts_included - cycle.cuts_used,
+          cutsRemaining: Math.max(0, cycle.cuts_included - cycle.cuts_used),
         }
       : null,
     createdAt: sub.created_at,
@@ -295,9 +296,13 @@ export async function createSubscriptionService(params: {
 /* ─────────── UPDATE ─────────── */
 export async function updateSubscriptionService(params: {
   barbershopId: string;
+  actorRole?: string;
+  actorIsAdmin?: boolean;
+  actorPermissions?: Record<string, boolean>;
   subscriptionId: string;
   data: {
     status?: string;
+    planId?: string;
     monthlyBarberId?: string | null;
     autoRenewal?: boolean;
     isRecurring?: boolean;
@@ -305,6 +310,34 @@ export async function updateSubscriptionService(params: {
   };
 }) {
   const updateData: any = {};
+
+  if (params.data.planId !== undefined) {
+    const canManageBenefits =
+      params.actorRole === "admin" ||
+      params.actorRole === "super_admin" ||
+      params.actorIsAdmin === true ||
+      params.actorPermissions?.manageBenefits === true;
+    if (!canManageBenefits) {
+      throw forbidden("Apenas admin pode alterar o plano da assinatura");
+    }
+
+    const plan = await findPlanByIdInBarbershop(params.barbershopId, params.data.planId);
+    if (!plan) throw notFound("Plano nao encontrado");
+    await assertPaymentMethodEnabled(params.barbershopId, (plan as any).payment_method);
+
+    const updated = await changeSubscriptionPlanInBarbershop(
+      params.barbershopId,
+      params.subscriptionId,
+      {
+        planId: params.data.planId,
+        amount: decimalToNumber(plan.price),
+        paymentMethod: (plan as any).payment_method,
+        cutsPerMonth: plan.cuts_per_month,
+      }
+    );
+    if (!updated) throw notFound("Assinatura nao encontrada");
+    return serialize(updated);
+  }
 
   if (params.data.status !== undefined) updateData.status = params.data.status;
   if (params.data.autoRenewal !== undefined) updateData.auto_renewal = params.data.autoRenewal;
