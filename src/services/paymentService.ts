@@ -8,12 +8,44 @@ import {
   listPaymentsInBarbershop,
   updatePaymentInBarbershop,
 } from "../repository/paymentRepository.js";
+import { findAppointmentByIdInBarbershop } from "../repository/appointmentRepository.js";
+import { findActiveSubscriptionByUser } from "../repository/subscriptionRepository.js";
 
 function decimalToNumber(v: any): number {
   if (v == null) return 0;
   if (typeof v === "number") return v;
   if (typeof v?.toNumber === "function") return v.toNumber();
   return Number(v);
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizePlanFeatureText(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.trim();
+  if (!text) return null;
+  if (text.includes("::")) {
+    const parts = text.split("::");
+    const label = parts[parts.length - 1]?.trim();
+    return label ? normalizeText(label) : null;
+  }
+  if (UUID_RE.test(text)) return null;
+  return normalizeText(text);
+}
+
+function isAppointmentServiceCoveredBySubscription(serviceName: string, activeSubscription: any): boolean {
+  const features = activeSubscription?.subscription_plans?.subscription_plan_features;
+  if (!Array.isArray(features)) return false;
+
+  const normServiceName = normalizeText(serviceName);
+  return features.some((feature: any) => normalizePlanFeatureText(feature.feature) === normServiceName);
 }
 
 function serialize(p: any) {
@@ -410,6 +442,35 @@ export async function createAppointmentPaymentService(params: {
     status?: string;
   };
 }) {
+  if (params.data.method === "subscription") {
+    const appointment = await findAppointmentByIdInBarbershop(
+      params.barbershopId,
+      params.data.appointmentId,
+    );
+
+    if (!appointment) throw notFound("Agendamento nao encontrado");
+    if (appointment.dependent_id) {
+      throw badRequest("Dependente sem plano nao pode usar saldo de assinatura");
+    }
+
+    const activeSubscription = await findActiveSubscriptionByUser(
+      params.barbershopId,
+      appointment.client_id,
+    );
+
+    const isCoveredByPlan =
+      activeSubscription &&
+      Array.isArray(appointment.appointment_services) &&
+      appointment.appointment_services.length > 0 &&
+      appointment.appointment_services.every((service: any) =>
+        isAppointmentServiceCoveredBySubscription(service.service_name, activeSubscription),
+      );
+
+    if (!isCoveredByPlan) {
+      throw badRequest("Servico nao coberto pelo plano ativo do assinante");
+    }
+  }
+
   const created = await createPaymentInBarbershop({
     barbershopId: params.barbershopId,
     userId: params.data.userId,
