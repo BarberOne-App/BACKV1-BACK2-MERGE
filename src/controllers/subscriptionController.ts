@@ -80,6 +80,9 @@ export async function updateSubscription(req: Request, res: Response) {
 
   const result = await updateSubscriptionService({
     barbershopId: req.user!.barbershopId,
+    actorRole: req.user!.role,
+    actorIsAdmin: req.user!.isAdmin,
+    actorPermissions: req.user!.permissions,
     subscriptionId: req.params.id,
     data: b.value,
   });
