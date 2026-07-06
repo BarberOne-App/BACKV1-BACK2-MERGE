@@ -25,6 +25,43 @@ function decimalToNumber(v: any): number {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SAO_PAULO_TIME_ZONE = "America/Sao_Paulo";
+
+function getSaoPauloDateParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SAO_PAULO_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const get = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+  };
+}
+
+function buildSaoPauloMonthStart(year: number, month: number) {
+  const adjustedYear = year + Math.floor((month - 1) / 12);
+  const adjustedMonth = ((month - 1) % 12 + 12) % 12 + 1;
+  return new Date(
+    `${adjustedYear}-${String(adjustedMonth).padStart(2, "0")}-01T00:00:00-03:00`
+  );
+}
+
+function getNextMonthStart(date = new Date()) {
+  const parts = getSaoPauloDateParts(date);
+  return buildSaoPauloMonthStart(parts.year, parts.month + 1);
+}
+
+function isAlreadyRenewedForNextMonth(nextBillingAt: Date | string | null | undefined) {
+  if (!nextBillingAt) return false;
+  const nextBillingDate = nextBillingAt instanceof Date ? nextBillingAt : new Date(nextBillingAt);
+  if (Number.isNaN(nextBillingDate.getTime())) return false;
+  return nextBillingDate >= getNextMonthStart();
+}
 
 function normalizeFeatureText(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -298,6 +335,10 @@ export async function renewSubscriptionService(params: {
   if (!sub) throw notFound("Assinatura não encontrada");
 
   const cutsPerMonth = sub.subscription_plans?.cuts_per_month ?? 0;
+
+  if (isAlreadyRenewedForNextMonth(sub.next_billing_at)) {
+    throw badRequest("Este ciclo ja foi renovado para o mes seguinte.");
+  }
 
   const configuredPaymentMethod = (sub.subscription_plans as any)?.payment_method;
   if (configuredPaymentMethod === "credito" || configuredPaymentMethod === "debito") {

@@ -1,4 +1,5 @@
 import prisma from "../database/database.js";
+import { badRequest } from "../errors/index.js";
 
 const SUB_INCLUDE = {
   users: { select: { id: true, name: true, email: true, phone: true, cpf: true } },
@@ -19,6 +20,35 @@ function getStartOfToday() {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
   return date;
+}
+
+function getSaoPauloDateParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const get = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+  };
+}
+
+function buildSaoPauloMonthStart(year: number, month: number) {
+  const adjustedYear = year + Math.floor((month - 1) / 12);
+  const adjustedMonth = ((month - 1) % 12 + 12) % 12 + 1;
+  return new Date(
+    `${adjustedYear}-${String(adjustedMonth).padStart(2, "0")}-01T00:00:00-03:00`
+  );
+}
+
+function getNextMonthStart(date = new Date()) {
+  const parts = getSaoPauloDateParts(date);
+  return buildSaoPauloMonthStart(parts.year, parts.month + 1);
 }
 
 /* ───── LIST ───── */
@@ -220,9 +250,17 @@ export async function renewSubscriptionTx(
     const now = new Date();
     const nextBilling = new Date(now);
     nextBilling.setMonth(nextBilling.getMonth() + 1);
+    const nextMonthStart = getNextMonthStart(now);
 
-    await tx.subscriptions.update({
-      where: { id },
+    const updated = await tx.subscriptions.updateMany({
+      where: {
+        id,
+        barbershop_id: barbershopId,
+        OR: [
+          { next_billing_at: null },
+          { next_billing_at: { lt: nextMonthStart } },
+        ],
+      },
       data: {
         status: "active",
         last_billing_at: now,
@@ -233,6 +271,10 @@ export async function renewSubscriptionTx(
         updated_at: now,
       },
     });
+
+    if (updated.count === 0) {
+      throw badRequest("Este ciclo ja foi renovado para o mes seguinte.");
+    }
 
     const periodStart = new Date(now.getUTCFullYear(), now.getUTCMonth(), 1);
     const periodEnd = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0);
