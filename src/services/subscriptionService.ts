@@ -13,6 +13,7 @@ import {
 } from "../repository/subscriptionRepository.js";
 import { findPlanByIdInBarbershop } from "../repository/subscriptionPlanRepository.js";
 import { findBarberByIdInBarbershop } from "../repository/barberRepository.js";
+import { getSettingsByBarbershop } from "../repository/settingRepository.js";
 import { expireClientSubscriptions } from "./subscriptionExpirationService.js";
 
 /* ────────── helpers ────────── */
@@ -61,6 +62,27 @@ function isAlreadyRenewedForNextMonth(nextBillingAt: Date | string | null | unde
   const nextBillingDate = nextBillingAt instanceof Date ? nextBillingAt : new Date(nextBillingAt);
   if (Number.isNaN(nextBillingDate.getTime())) return false;
   return nextBillingDate >= getNextMonthStart();
+}
+
+function paymentMethodToSetting(method: string | null | undefined): "cartao" | "pix" | "local" | null {
+  if (method === "credito" || method === "debito") return "cartao";
+  if (method === "pix") return "pix";
+  if (method === "dinheiro" || method === "local") return "local";
+  return null;
+}
+
+async function assertPaymentMethodEnabled(barbershopId: string, method: string | null | undefined) {
+  const settingMethod = paymentMethodToSetting(method);
+  if (!settingMethod) return;
+
+  const settings = await getSettingsByBarbershop(barbershopId);
+  const hidden = Array.isArray((settings as any)?.hidden_booking_payment_methods)
+    ? (settings as any).hidden_booking_payment_methods
+    : [];
+
+  if (hidden.includes(settingMethod)) {
+    throw badRequest("Forma de pagamento desabilitada nas configuracoes da barbearia.");
+  }
 }
 
 function normalizeFeatureText(raw: unknown): string | null {
@@ -253,11 +275,7 @@ export async function createSubscriptionService(params: {
   
   // Define o payment method final (se o admin/barbeiro enviou um manual, usa o dele, senão usa o do plano)
   const finalPaymentMethod = params.data.paymentMethod || planPaymentMethod;
-
-  // Se a tentativa final for pagar no cartão via painel (onde não há checkout), bloqueia
-  if (finalPaymentMethod === "credito" || finalPaymentMethod === "debito") {
-    throw badRequest("Pagamentos no cartao devem ser assinados pelo cliente no checkout seguro.");
-  }
+  await assertPaymentMethodEnabled(params.barbershopId, finalPaymentMethod);
 
   // 3. Criar subscription + primeiro ciclo
   const created = await createSubscriptionTx({

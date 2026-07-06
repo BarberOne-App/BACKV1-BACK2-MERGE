@@ -10,6 +10,7 @@ import {
 } from "../repository/paymentRepository.js";
 import { findAppointmentByIdInBarbershop } from "../repository/appointmentRepository.js";
 import { findActiveSubscriptionByUser } from "../repository/subscriptionRepository.js";
+import { getSettingsByBarbershop } from "../repository/settingRepository.js";
 
 function decimalToNumber(v: any): number {
   if (v == null) return 0;
@@ -50,6 +51,27 @@ function isAppointmentServiceCoveredBySubscription(serviceName: string, activeSu
 
 function normalizePaidPaymentMethod(method: string | undefined, status: string | undefined) {
   return (status === "paid" || status === "approved") && method === "local" ? "dinheiro" : method;
+}
+
+function paymentMethodToSetting(method: string | null | undefined): "cartao" | "pix" | "local" | null {
+  if (method === "credito" || method === "debito") return "cartao";
+  if (method === "pix") return "pix";
+  if (method === "dinheiro" || method === "local") return "local";
+  return null;
+}
+
+async function assertPaymentMethodEnabled(barbershopId: string, method: string | null | undefined) {
+  const settingMethod = paymentMethodToSetting(method);
+  if (!settingMethod) return;
+
+  const settings = await getSettingsByBarbershop(barbershopId);
+  const hidden = Array.isArray((settings as any)?.hidden_booking_payment_methods)
+    ? (settings as any).hidden_booking_payment_methods
+    : [];
+
+  if (hidden.includes(settingMethod)) {
+    throw badRequest("Forma de pagamento desabilitada nas configuracoes da barbearia.");
+  }
 }
 
 function serialize(p: any) {
@@ -230,6 +252,8 @@ export async function createPaymentService(params: {
     status?: string;
   };
 }) {
+  await assertPaymentMethodEnabled(params.barbershopId, params.data.method);
+
   const created = await createPaymentInBarbershop({
     barbershopId: params.barbershopId,
     userId: params.data.userId,
@@ -261,6 +285,8 @@ export async function createManualSubscriptionPaymentService(params: {
   if (Number.isNaN(paidAt.getTime())) {
     throw badRequest("Data de pagamento invalida.");
   }
+
+  await assertPaymentMethodEnabled(params.barbershopId, params.data.method);
 
   const created = await prisma.$transaction(async (tx: any) => {
     const subscription = await tx.subscriptions.findFirst({
@@ -446,6 +472,8 @@ export async function createAppointmentPaymentService(params: {
     status?: string;
   };
 }) {
+  await assertPaymentMethodEnabled(params.barbershopId, params.data.method);
+
   if (params.data.method === "subscription") {
     const appointment = await findAppointmentByIdInBarbershop(
       params.barbershopId,

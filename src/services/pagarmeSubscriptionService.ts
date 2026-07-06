@@ -2,6 +2,7 @@
 import crypto from 'crypto';
 import prisma from '../database/database.js';
 import { findActiveSubscriptionByUser } from '../repository/subscriptionRepository.js';
+import { getSettingsByBarbershop } from '../repository/settingRepository.js';
 import { pagarmeRequest } from './pagarmeApi.js';
 import { createPagarmeOrderService, getPagarmeOrderStatusService, normalizePagarmeOrder } from './pagarmeOrderService.js';
 
@@ -11,6 +12,17 @@ function onlyNumbers(value: any) {
 
 function toCents(value: any) {
     return Math.round(Number(value || 0) * 100);
+}
+
+async function assertPaymentChannelEnabled(barbershopId: string, channel: 'cartao' | 'pix') {
+    const settings = await getSettingsByBarbershop(barbershopId);
+    const hidden = Array.isArray((settings as any)?.hidden_booking_payment_methods)
+        ? (settings as any).hidden_booking_payment_methods
+        : [];
+
+    if (hidden.includes(channel)) {
+        throw new Error('Forma de pagamento desabilitada nas configuracoes da barbearia.');
+    }
 }
 
 function extractPhone(phone: any) {
@@ -136,6 +148,8 @@ export async function createPagarmeClientSubscriptionService(params: any, curren
     if (String(plan.barbershop_id) !== String(barbershopId)) {
         throw new Error('O plano informado nao pertence a esta barbearia.');
     }
+
+    await assertPaymentChannelEnabled(String(barbershopId), 'cartao');
 
     const shop = await prisma.barbershops.findUnique({
         where: { id: String(barbershopId) },
@@ -482,6 +496,8 @@ export async function createPagarmeClientPixOrderService(params: any, currentUse
     if ((plan as any).payment_method !== 'pix') {
         throw new Error('A forma de pagamento deste plano nao e PIX.');
     }
+
+    await assertPaymentChannelEnabled(barbershopId, 'pix');
 
     return createPagarmeOrderService({
         amount: Number(plan.price),
