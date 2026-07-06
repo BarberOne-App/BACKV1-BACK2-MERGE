@@ -23,6 +23,7 @@ export async function updateBarbershopProfile(req: Request, res: Response) {
             phone: req.body?.phone,
             cnpj: req.body?.cnpj,
             logoUrl: req.body?.logoUrl,
+            googleMapsUrl: req.body?.googleMapsUrl,
         },
     });
 

@@ -14,6 +14,7 @@ const barbershopProfileSelect = {
     phone: true,
     cnpj: true,
     logo_url: true,
+    google_maps_url: true,
     slug: true,
     pagarme_recipient_id: true,
     pagarme_recipient_status: true,
@@ -36,6 +37,7 @@ export function updateBarbershopProfileById(
         phone?: string | null;
         cnpj?: string | null;
         logo_url?: string | null;
+        google_maps_url?: string | null;
     },
 ) {
     return prisma.barbershops.update({
