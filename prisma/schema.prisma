@@ -188,6 +188,7 @@ model barbershops {
   deactivated_at                         DateTime?                          @db.Timestamptz(6)
   selected_plan                          String?
   logo_url                               String?
+  google_maps_url                        String?
   pagarme_recipient_id                   String?
   platform_subscription_status           String?
   pagarme_recipient_status               String?

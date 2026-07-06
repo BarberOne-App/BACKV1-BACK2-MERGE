@@ -95,6 +95,7 @@ function mapBarbershopProfile(row: {
     phone: string | null;
     cnpj: string | null;
     logo_url: string | null;
+    google_maps_url?: string | null;
     slug: string;
     pagarme_recipient_id?: string | null;
     pagarme_recipient_status?: string | null;
@@ -108,6 +109,7 @@ function mapBarbershopProfile(row: {
         phone: row.phone ?? "",
         cnpj: row.cnpj ?? "",
         logoUrl: row.logo_url ?? "",
+        googleMapsUrl: row.google_maps_url ?? "",
         slug: row.slug,
         pagarmeRecipientId: row.pagarme_recipient_id ?? null,
         pagarmeRecipientStatus: row.pagarme_recipient_status ?? null,
@@ -139,6 +141,7 @@ export async function updateBarbershopProfileService(params: {
         phone?: unknown;
         cnpj?: unknown;
         logoUrl?: unknown;
+        googleMapsUrl?: unknown;
     };
 }) {
     if (!String(params.barbershopId || "").trim()) {
@@ -162,10 +165,22 @@ export async function updateBarbershopProfileService(params: {
         phone: string | null;
         cnpj: string | null;
         logo_url?: string | null;
+        google_maps_url?: string | null;
     };
 
     if (Object.prototype.hasOwnProperty.call(params.data, "logoUrl")) {
         updateData.logo_url = String(params.data?.logoUrl ?? "").trim() || null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(params.data, "googleMapsUrl")) {
+        const googleMapsUrl = String(params.data?.googleMapsUrl ?? "").trim();
+        if (
+            googleMapsUrl &&
+            !/^https?:\/\/((www\.)?google\.[^/\s]+\/maps|maps\.google\.[^/\s]+|maps\.app\.goo\.gl|goo\.gl\/maps)(\/|$)/i.test(googleMapsUrl)
+        ) {
+            throw badRequest("Informe um link valido do Google Maps");
+        }
+        updateData.google_maps_url = googleMapsUrl || null;
     }
 
     const row = await updateBarbershopProfileById(params.barbershopId, updateData);
