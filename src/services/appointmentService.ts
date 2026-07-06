@@ -796,16 +796,18 @@ export async function createAppointmentService(params: {
   ]);
 
   const isFitAppointment = String(params.data.notes || '').includes('[barberone:fit]');
+  const isDependentAppointment = Boolean(dependentId);
+  const activeSubscriptionForAppointment = isDependentAppointment ? null : activeSubscription;
   const subscriptionBarberRule = getSubscriptionBarberRule(barbershopSettings);
   const isFreeChoiceRule = subscriptionBarberRule === "free_choice";
 
   if (
     !isFitAppointment &&
     !isFreeChoiceRule &&
-    activeSubscription?.monthly_barber_id &&
-    activeSubscription.monthly_barber_id !== barberId
+    activeSubscriptionForAppointment?.monthly_barber_id &&
+    activeSubscriptionForAppointment.monthly_barber_id !== barberId
   ) {
-    const barberChangeValidation = canChangeMonthlyBarber(activeSubscription, startAt);
+    const barberChangeValidation = canChangeMonthlyBarber(activeSubscriptionForAppointment, startAt);
 
     if (!barberChangeValidation.allowed) {
       throw badRequest(barberChangeValidation.reason!);
@@ -852,10 +854,13 @@ export async function createAppointmentService(params: {
     throw badRequest("Cliente/dependente já possui agendamento neste horário");
   }
 
-  const hasActiveSubscription = activeSubscription && (activeSubscription.status === "active" || activeSubscription.status === "paused");
+  const hasActiveSubscription = activeSubscriptionForAppointment && (
+    activeSubscriptionForAppointment.status === "active" ||
+    activeSubscriptionForAppointment.status === "paused"
+  );
   const isSubscriptionAppointment = !!(
     hasActiveSubscription &&
-    normalizedServices.every((s: any) => isServiceCoveredBySubscription(s, activeSubscription))
+    normalizedServices.every((s: any) => isServiceCoveredBySubscription(s, activeSubscriptionForAppointment))
   );
   const appointmentStatus = "scheduled";
 
@@ -905,11 +910,11 @@ export async function createAppointmentService(params: {
   if (
     !isFitAppointment &&
     !isFreeChoiceRule &&
-    activeSubscription &&
-    activeSubscription.monthly_barber_id !== barberId
+    activeSubscriptionForAppointment &&
+    activeSubscriptionForAppointment.monthly_barber_id !== barberId
   ) {
     await prisma.subscriptions.update({
-      where: { id: activeSubscription.id },
+      where: { id: activeSubscriptionForAppointment.id },
       data: {
         monthly_barber_id: barberId,
         monthly_barber_set_at: new Date(),
