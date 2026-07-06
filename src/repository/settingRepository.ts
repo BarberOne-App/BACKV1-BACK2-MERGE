@@ -7,7 +7,7 @@ export function getSettingsByBarbershop(barbershopId: string) {
     });
 }
 
-const barbershopProfileSelect = {
+const barbershopProfileSelect: any = {
     id: true,
     name: true,
     email: true,
@@ -42,7 +42,7 @@ export function updateBarbershopProfileById(
 ) {
     return prisma.barbershops.update({
         where: { id: barbershopId },
-        data,
+        data: data as any,
         select: barbershopProfileSelect,
     });
 }
