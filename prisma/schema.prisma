@@ -236,6 +236,17 @@ model customer_reviews {
   @@index([created_at], map: "idx_customer_reviews_created_at")
 }
 
+model feature_updates {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String
+  description String
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([active, created_at], map: "idx_feature_updates_active_created_at")
+}
+
 model integration_credentials {
   id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   provider       String

@@ -84,3 +84,17 @@ export const SuperAdminCreateIntegrationCredentialSchema = joi
     name: joi.string().trim().min(2).max(120).allow("", null).optional(),
   })
   .options({ abortEarly: false, stripUnknown: true });
+
+export const SuperAdminFeatureUpdateIdParamSchema = joi
+  .object({
+    id: joi.string().uuid().required(),
+  })
+  .options({ abortEarly: false, stripUnknown: true });
+
+export const SuperAdminFeatureUpdateSchema = joi
+  .object({
+    title: joi.string().trim().min(2).max(160).required(),
+    description: joi.string().trim().min(2).max(2000).required(),
+    active: joi.boolean().default(true),
+  })
+  .options({ abortEarly: false, stripUnknown: true });

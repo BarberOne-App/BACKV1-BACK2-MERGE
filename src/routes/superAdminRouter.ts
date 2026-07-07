@@ -15,8 +15,21 @@ import {
   createSuperAdminBarbershopIntegrationCredential,
   revokeSuperAdminIntegrationCredential,
 } from "../controllers/superAdminController.js";
+import {
+  createSuperAdminFeatureUpdate,
+  deleteSuperAdminFeatureUpdate,
+  listActiveFeatureUpdates,
+  listSuperAdminFeatureUpdates,
+  updateSuperAdminFeatureUpdate,
+} from "../controllers/featureUpdateController.js";
 
 const router = Router();
+
+router.get(
+  "/feature-updates",
+  requireAuth,
+  asyncHandler(listActiveFeatureUpdates)
+);
 
 router.get(
   "/super-admin/dashboard",
@@ -79,6 +92,34 @@ router.patch(
   requireAuth,
   requireSuperAdmin,
   asyncHandler(revokeSuperAdminIntegrationCredential)
+);
+
+router.get(
+  "/super-admin/feature-updates",
+  requireAuth,
+  requireSuperAdmin,
+  asyncHandler(listSuperAdminFeatureUpdates)
+);
+
+router.post(
+  "/super-admin/feature-updates",
+  requireAuth,
+  requireSuperAdmin,
+  asyncHandler(createSuperAdminFeatureUpdate)
+);
+
+router.patch(
+  "/super-admin/feature-updates/:id",
+  requireAuth,
+  requireSuperAdmin,
+  asyncHandler(updateSuperAdminFeatureUpdate)
+);
+
+router.delete(
+  "/super-admin/feature-updates/:id",
+  requireAuth,
+  requireSuperAdmin,
+  asyncHandler(deleteSuperAdminFeatureUpdate)
 );
 
 router.get(
