@@ -149,11 +149,16 @@ export async function createSubscriptionTx(data: {
   isRecurring?: boolean;
   autoRenewal?: boolean;
   cutsPerMonth: number;
+  status?: "active" | "pending";
+  createCycle?: boolean;
+  createPendingPayment?: boolean;
 }) {
   return prisma.$transaction(async (tx: any) => {
     const now = new Date();
     const nextBilling = new Date(now);
     nextBilling.setMonth(nextBilling.getMonth() + 1);
+    const status = data.status ?? "active";
+    const createCycle = data.createCycle ?? status === "active";
 
     const sub = await tx.subscriptions.create({
       data: {
@@ -164,10 +169,10 @@ export async function createSubscriptionTx(data: {
         payment_method: data.paymentMethod as any,
         is_recurring: data.isRecurring ?? true,
         auto_renewal: data.autoRenewal ?? true,
-        status: "active",
-        started_at: now,
-        next_billing_at: nextBilling,
-        last_billing_at: now,
+        status,
+        started_at: status === "active" ? now : undefined,
+        next_billing_at: status === "active" ? nextBilling : null,
+        last_billing_at: status === "active" ? now : null,
         days_overdue: 0,
         overdue_notification_sent: false,
       },
@@ -176,18 +181,128 @@ export async function createSubscriptionTx(data: {
     const periodStart = new Date(now.getUTCFullYear(), now.getUTCMonth(), 1);
     const periodEnd = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0);
 
-    await tx.subscription_cycles.create({
+    if (createCycle) {
+      await tx.subscription_cycles.create({
+        data: {
+          subscription_id: sub.id,
+          period_start: periodStart,
+          period_end: periodEnd,
+          cuts_included: data.cutsPerMonth,
+          cuts_used: 0,
+        },
+      });
+    }
+
+    if (data.createPendingPayment) {
+      await tx.payment_transactions.create({
+        data: {
+          user_id: data.userId,
+          subscription_id: sub.id,
+          barbershop_id: data.barbershopId,
+          amount: data.amount,
+          method: (data.paymentMethod ?? "local") as any,
+          status: "pending",
+        },
+      });
+    }
+
+    return tx.subscriptions.findUnique({
+      where: { id: sub.id },
+      include: SUB_INCLUDE,
+    });
+  });
+}
+
+export async function activatePendingLocalSubscriptionInBarbershop(
+  barbershopId: string,
+  id: string
+) {
+  const existing = await prisma.subscriptions.findFirst({
+    where: { id, barbershop_id: barbershopId },
+    include: {
+      subscription_plans: true,
+      payment_transactions: {
+        where: { status: "pending" },
+        orderBy: { created_at: "desc" },
+        take: 1,
+      },
+      subscription_cycles: {
+        orderBy: { period_start: "desc" },
+        take: 1,
+      },
+    },
+  });
+  if (!existing) return null;
+  if (existing.status !== "pending") return null;
+
+  return prisma.$transaction(async (tx: any) => {
+    const now = new Date();
+    const nextBilling = new Date(now);
+    nextBilling.setMonth(nextBilling.getMonth() + 1);
+    const periodStart = new Date(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    const periodEnd = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0);
+
+    await tx.subscriptions.update({
+      where: { id },
       data: {
-        subscription_id: sub.id,
+        status: "active",
+        started_at: now,
+        last_billing_at: now,
+        next_billing_at: nextBilling,
+        days_overdue: 0,
+        overdue_notification_sent: false,
+        ended_at: null,
+        updated_at: now,
+      },
+    });
+
+    await tx.subscription_cycles.upsert({
+      where: {
+        subscription_id_period_start_period_end: {
+          subscription_id: id,
+          period_start: periodStart,
+          period_end: periodEnd,
+        },
+      },
+      create: {
+        subscription_id: id,
         period_start: periodStart,
         period_end: periodEnd,
-        cuts_included: data.cutsPerMonth,
+        cuts_included: existing.subscription_plans?.cuts_per_month ?? 0,
+        cuts_used: 0,
+      },
+      update: {
+        cuts_included: existing.subscription_plans?.cuts_per_month ?? 0,
         cuts_used: 0,
       },
     });
 
+    const pendingPayment = existing.payment_transactions?.[0];
+    if (pendingPayment) {
+      await tx.payment_transactions.update({
+        where: { id: pendingPayment.id },
+        data: {
+          status: "paid",
+          paid_at: now,
+          updated_at: now,
+        },
+      });
+    } else {
+      await tx.payment_transactions.create({
+        data: {
+          user_id: existing.user_id,
+          subscription_id: id,
+          barbershop_id: barbershopId,
+          amount: existing.amount ?? 0,
+          method: (existing.payment_method ?? "local") as any,
+          status: "paid",
+          paid_at: now,
+        },
+      });
+    }
+
     return tx.subscriptions.findUnique({
-      where: { id: sub.id },
+      where: { id },
       include: SUB_INCLUDE,
     });
   });

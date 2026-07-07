@@ -17,7 +17,7 @@ export const CreateSubscriptionSchema = joi
 export const UpdateSubscriptionSchema = joi
   .object({
     planId: joi.string().uuid().optional(),
-    status: joi.string().valid("active", "paused", "cancelled", "expired").optional(),
+    status: joi.string().valid("active", "paused", "cancelled", "expired", "pending").optional(),
     monthlyBarberId: joi.string().uuid().allow(null).optional(),
     autoRenewal: joi.boolean().optional(),
     isRecurring: joi.boolean().optional(),
@@ -33,7 +33,7 @@ export const UpdateSubscriptionSchema = joi
 export const ListSubscriptionsQuerySchema = joi
   .object({
     userId: joi.string().uuid().optional(),
-    status: joi.string().valid("active", "paused", "cancelled", "expired").optional(),
+    status: joi.string().valid("active", "paused", "cancelled", "expired", "pending").optional(),
     search: joi.string().trim().max(100).optional(),
     searchType: joi.string().valid("name", "cpf").optional().default("name"),
     page: joi.number().integer().min(1).optional(),

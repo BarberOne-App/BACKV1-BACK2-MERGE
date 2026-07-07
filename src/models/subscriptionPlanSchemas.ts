@@ -9,7 +9,7 @@ export const CreatePlanSchema = joi
     cutsPerMonth: joi.number().integer().min(0).required(),
     paymentMethod: joi
       .string()
-      .valid("pix", "debito", "credito")
+      .valid("pix", "debito", "credito", "local")
       .required(),
     active: joi.boolean().optional().default(true),
     recommended: joi.boolean().optional().default(false),
@@ -29,7 +29,7 @@ export const UpdatePlanSchema = joi
     cutsPerMonth: joi.number().integer().min(0).optional(),
     paymentMethod: joi
       .string()
-      .valid("pix", "debito", "credito")
+      .valid("pix", "debito", "credito", "local")
       .optional(),
     active: joi.boolean().optional(),
     recommended: joi.boolean().optional(),

@@ -2,6 +2,7 @@ import { badRequest, conflict, forbidden, notFound } from "../errors/index.js";
 import prisma from "../database/database.js";
 import {
   applyOverdueStates,
+  activatePendingLocalSubscriptionInBarbershop,
   cancelSubscriptionInBarbershop,
   changeSubscriptionPlanInBarbershop,
   createSubscriptionTx,
@@ -277,6 +278,9 @@ export async function createSubscriptionService(params: {
   // Define o payment method final (se o admin/barbeiro enviou um manual, usa o dele, senão usa o do plano)
   const finalPaymentMethod = params.data.paymentMethod || planPaymentMethod;
   await assertPaymentMethodEnabled(params.barbershopId, finalPaymentMethod);
+  const requiresAdminPaymentConfirmation =
+    params.actorRole === "client" &&
+    (finalPaymentMethod === "local" || finalPaymentMethod === "dinheiro");
 
   // 3. Criar subscription + primeiro ciclo
   const created = await createSubscriptionTx({
@@ -285,9 +289,12 @@ export async function createSubscriptionService(params: {
     planId: params.data.planId,
     amount: decimalToNumber(plan.price),
     paymentMethod: finalPaymentMethod,
-    isRecurring: params.data.isRecurring,
-    autoRenewal: params.data.autoRenewal,
+    isRecurring: requiresAdminPaymentConfirmation ? false : params.data.isRecurring,
+    autoRenewal: requiresAdminPaymentConfirmation ? false : params.data.autoRenewal,
     cutsPerMonth: plan.cuts_per_month,
+    status: requiresAdminPaymentConfirmation ? "pending" : "active",
+    createCycle: !requiresAdminPaymentConfirmation,
+    createPendingPayment: requiresAdminPaymentConfirmation,
   });
 
   return serialize(created);
@@ -339,7 +346,16 @@ export async function updateSubscriptionService(params: {
     return serialize(updated);
   }
 
-  if (params.data.status !== undefined) updateData.status = params.data.status;
+  if (params.data.status !== undefined) {
+    if (params.data.status === "active") {
+      const activatedPending = await activatePendingLocalSubscriptionInBarbershop(
+        params.barbershopId,
+        params.subscriptionId
+      );
+      if (activatedPending) return serialize(activatedPending);
+    }
+    updateData.status = params.data.status;
+  }
   if (params.data.autoRenewal !== undefined) updateData.auto_renewal = params.data.autoRenewal;
   if (params.data.isRecurring !== undefined) updateData.is_recurring = params.data.isRecurring;
   if (params.data.paymentMethod !== undefined) updateData.payment_method = params.data.paymentMethod;
@@ -384,6 +400,10 @@ export async function renewSubscriptionService(params: {
   // Buscar subscription para saber cutsPerMonth do plano
   const sub = await findSubscriptionByIdInBarbershop(params.barbershopId, params.subscriptionId);
   if (!sub) throw notFound("Assinatura não encontrada");
+
+  if (sub.status === "pending") {
+    throw badRequest("Confirme o pagamento da assinatura antes de renovar o ciclo.");
+  }
 
   const cutsPerMonth = sub.subscription_plans?.cuts_per_month ?? 0;
 
