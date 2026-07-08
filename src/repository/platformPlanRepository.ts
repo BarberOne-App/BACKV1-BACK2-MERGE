@@ -73,7 +73,8 @@ export async function createPlatformPlanInDB(data: {
     });
 
     if (data.platform_plan_features && data.platform_plan_features.length > 0) {
-      await tx.platform_plan_platform_plan_features.createMany({
+      // await tx.platform_plan_platform_plan_features.createMany({
+      await tx.platform_plan_features.createMany({
         data: data.platform_plan_features.map((f, i) => ({
           plan_id: plan.id,
           feature: f,
@@ -132,7 +133,8 @@ export async function updatePlatformPlanInDB(
     await tx.platform_plans.update({ where: { id }, data: updateData });
 
     if (data.platform_plan_features !== undefined) {
-      await tx.platform_plan_platform_plan_features.deleteMany({ where: { plan_id: id } });
+      // await tx.platform_plan_platform_plan_features.deleteMany({ where: { plan_id: id } });
+      await tx.platform_plan_features.deleteMany({ where: { plan_id: id } });
       if (data.platform_plan_features.length > 0) {
         await tx.platform_plan_platform_plan_features.createMany({
           data: data.platform_plan_features.map((f, i) => ({
