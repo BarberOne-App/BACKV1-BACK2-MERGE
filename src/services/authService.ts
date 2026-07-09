@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import axios from "axios";
+import jwt from "jsonwebtoken";
 import { Prisma } from "@prisma/client";
 import prisma from "../database/database.js";
 import { signToken, signRefreshToken, verifyRefreshToken, signResetToken, verifyResetToken } from "../utils/jwt.js";
@@ -115,6 +116,23 @@ function buildAuthResponse(user: any, created = false) {
   };
 }
 
+function createSubscriptionIntentToken(params: {
+  userId: string;
+  barbershopId: string;
+}) {
+  return jwt.sign(
+    {
+      type: "barbershop_subscription_reactivation",
+      userId: params.userId,
+      barbershopId: params.barbershopId,
+    },
+    process.env.JWT_SECRET!,
+    {
+      expiresIn: "30m",
+    }
+  );
+}
+
 async function getGoogleProfile(accessToken: string) {
   if (!accessToken) throw badRequest("Token do Google nao informado");
 
@@ -184,9 +202,9 @@ function hashOtpCode(code: string) {
 function getOutboundTokenSecret() {
   return String(
     process.env.ARESCHAT_OUTBOUND_TOKEN_SECRET ||
-      process.env.INTEGRATION_TOKEN_PEPPER ||
-      process.env.JWT_SECRET ||
-      ""
+    process.env.INTEGRATION_TOKEN_PEPPER ||
+    process.env.JWT_SECRET ||
+    ""
   ).trim();
 }
 
@@ -221,7 +239,7 @@ function buildOtpMessage(params: {
 }) {
   const template = String(
     process.env.WHATSAPP_LOGIN_OTP_MESSAGE_TEMPLATE ||
-      "Seu codigo de acesso BarberOne e: {{code}}\n\nEle expira em {{minutes}} minutos. Nao compartilhe este codigo."
+    "Seu codigo de acesso BarberOne e: {{code}}\n\nEle expira em {{minutes}} minutos. Nao compartilhe este codigo."
   );
 
   return template
@@ -478,15 +496,28 @@ export async function loginService(params: { email: string; password: string; ba
       const shouldBlock = currentSub !== null || now > trialEndsAt;
 
       if (shouldBlock) {
+        const subscriptionIntentToken = createSubscriptionIntentToken({
+          userId: user.id,
+          barbershopId: shop.id,
+        });
         const formatted = trialEndsAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
         const message = currentSub !== null
           ? `A assinatura da barbearia "${shop.name}" expirou. Renove seu plano para continuar usando a plataforma.`
           : `O período de teste da barbearia "${shop.name}" expirou em ${formatted}. Assine um plano para continuar usando a plataforma.`;
+        // return {
+        //   trialExpired: true,
+        //   trialExpiredAt: trialEndsAt.toISOString(),
+        //   barbershopId: shop.id,
+        //   barbershopName: shop.name,
+        //   message,
+        // };
         return {
           trialExpired: true,
           trialExpiredAt: trialEndsAt.toISOString(),
           barbershopId: shop.id,
+          barbershopSlug: shop.slug,
           barbershopName: shop.name,
+          subscriptionIntentToken,
           message,
         };
       }
