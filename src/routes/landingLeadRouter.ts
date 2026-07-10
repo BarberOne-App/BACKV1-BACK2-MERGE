@@ -1,0 +1,11 @@
+import { Router } from "express";
+import { createPublicLandingLead, getSuperAdminLandingLead, listSuperAdminLandingLeads, patchSuperAdminLandingLead } from "../controllers/landingLeadController.js";
+import { asyncHandler } from "../middleware/asyncHandler.js";
+import { requireAuth, requireSuperAdmin } from "../middleware/authMiddleware.js";
+import { publicLeadRateLimit } from "../middleware/publicLeadRateLimit.js";
+const router = Router();
+router.post("/public/landing-leads", publicLeadRateLimit, asyncHandler(createPublicLandingLead));
+router.get("/super-admin/landing-leads", requireAuth, requireSuperAdmin, asyncHandler(listSuperAdminLandingLeads));
+router.get("/super-admin/landing-leads/:id", requireAuth, requireSuperAdmin, asyncHandler(getSuperAdminLandingLead));
+router.patch("/super-admin/landing-leads/:id", requireAuth, requireSuperAdmin, asyncHandler(patchSuperAdminLandingLead));
+export default router;

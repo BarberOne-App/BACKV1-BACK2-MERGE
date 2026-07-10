@@ -7,6 +7,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model landing_leads {
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  email        String
+  phone        String
+  cnpj         String?
+  source       String              @default("landing_whatsapp")
+  status       landing_lead_status @default(new)
+  notes        String?
+  contacted_at DateTime?           @db.Timestamptz(6)
+  created_at   DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([status], map: "idx_landing_leads_status")
+  @@index([created_at], map: "idx_landing_leads_created_at")
+}
+
 model appointment_products {
   id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   appointment_id   String       @db.Uuid
@@ -732,6 +749,13 @@ enum appointment_status {
   completed
   cancelled
   no_show
+}
+
+enum landing_lead_status {
+  new
+  in_contact
+  converted
+  discarded
 }
 
 enum barbershop_status {
