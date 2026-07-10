@@ -61,13 +61,30 @@ export async function reactivateBarbershopPlatformSubscriptionService(params: {
     console.log("Barbershop Status:", barbershopStatus);
     console.log("Subscription Status:", subscriptionStatus);
 
+    const normalizedSubscriptionStatus =
+        typeof subscriptionStatus === "string"
+            ? subscriptionStatus.trim()
+            : subscriptionStatus;
+
     const canReactivate =
         ["trial_expired", "expired", "suspended", "inactive"].includes(barbershopStatus) ||
-        ["expired", "cancelled", "canceled", "past_due", "paused", null].includes(subscriptionStatus);
+        normalizedSubscriptionStatus == null ||
+        normalizedSubscriptionStatus === "" ||
+        ["expired", "cancelled", "canceled", "past_due", "paused"].includes(
+            normalizedSubscriptionStatus
+        );
 
     if (!canReactivate) {
         throw badRequest("Esta barbearia não está disponível para reativação.");
     }
+
+    // const canReactivate =
+    //     ["trial_expired", "expired", "suspended", "inactive"].includes(barbershopStatus) ||
+    //     ["expired", "cancelled", "canceled", "past_due", "paused", null, "", " ", undefined].includes(subscriptionStatus);
+
+    // if (!canReactivate) {
+    //     throw badRequest("Esta barbearia não está disponível para reativação.");
+    // }
 
     if (!params.cardToken) {
         throw badRequest("cardToken é obrigatório para reativar a assinatura.");
