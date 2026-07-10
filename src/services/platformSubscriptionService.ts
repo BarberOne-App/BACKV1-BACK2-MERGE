@@ -58,9 +58,12 @@ export async function reactivateBarbershopPlatformSubscriptionService(params: {
     const barbershopStatus = String(barbershop.status || "").toLowerCase();
     const subscriptionStatus = String(barbershop.platform_subscription_status || "").toLowerCase();
 
+    console.log("Barbershop Status:", barbershopStatus);
+    console.log("Subscription Status:", subscriptionStatus);
+
     const canReactivate =
         ["trial_expired", "expired", "suspended", "inactive"].includes(barbershopStatus) ||
-        ["expired", "cancelled", "canceled", "past_due", "paused", null ].includes(subscriptionStatus);
+        ["expired", "cancelled", "canceled", "past_due", "paused", null].includes(subscriptionStatus);
 
     if (!canReactivate) {
         throw badRequest("Esta barbearia não está disponível para reativação.");
