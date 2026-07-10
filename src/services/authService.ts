@@ -480,7 +480,7 @@ export async function loginService(params: { email: string; password: string; ba
     });
     const hasActiveSub =
       currentSub !== null &&
-      currentSub.status === "active" &&
+      (currentSub.status === "active" || currentSub.status === "future") &&
       currentSub.canceled_at === null &&
       (currentSub.next_billing_date === null || currentSub.next_billing_date > now);
 
