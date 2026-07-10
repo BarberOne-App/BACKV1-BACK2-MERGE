@@ -1,0 +1,13 @@
+import { Prisma, landing_lead_status, type landing_leads } from "@prisma/client";
+import prisma from "../database/database.js";
+import { notFound } from "../errors/index.js";
+const serialize = (lead: landing_leads) => ({ id: lead.id, name: lead.name, email: lead.email, phone: lead.phone, cnpj: lead.cnpj, source: lead.source, status: lead.status, notes: lead.notes, contactedAt: lead.contacted_at, createdAt: lead.created_at, updatedAt: lead.updated_at });
+export async function createLandingLead(data: { name: string; email: string; phone: string; cnpj?: string | null }) { return serialize(await prisma.landing_leads.create({ data: { ...data, cnpj: data.cnpj || null, source: "landing_whatsapp", status: "new" } })); }
+export async function listLandingLeads(params: { q?: string; status?: landing_lead_status; page: number; limit: number; sortOrder: "asc" | "desc" }) {
+  const q = String(params.q || "").trim(); const digits = q.replace(/\D/g, "");
+  const where: Prisma.landing_leadsWhereInput = { ...(params.status ? { status: params.status } : {}), ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }, { phone: { contains: digits || q } }, { cnpj: { contains: digits || q } }] } : {}) };
+  const [items, total, allTotal, newCount, inContactCount, convertedCount] = await prisma.$transaction([prisma.landing_leads.findMany({ where, orderBy: { created_at: params.sortOrder }, skip: (params.page - 1) * params.limit, take: params.limit }), prisma.landing_leads.count({ where }), prisma.landing_leads.count(), prisma.landing_leads.count({ where: { status: "new" } }), prisma.landing_leads.count({ where: { status: "in_contact" } }), prisma.landing_leads.count({ where: { status: "converted" } })]);
+  return { items: items.map(serialize), page: params.page, limit: params.limit, total, totalPages: Math.max(1, Math.ceil(total / params.limit)), metrics: { total: allTotal, new: newCount, inContact: inContactCount, converted: convertedCount } };
+}
+export async function getLandingLead(id: string) { const lead = await prisma.landing_leads.findUnique({ where: { id } }); if (!lead) throw notFound("Lead nao encontrado"); return serialize(lead); }
+export async function updateLandingLead(id: string, data: { status?: landing_lead_status; notes?: string | null; contactedAt?: string | Date | null }) { await getLandingLead(id); return serialize(await prisma.landing_leads.update({ where: { id }, data: { ...(data.status !== undefined ? { status: data.status } : {}), ...(data.notes !== undefined ? { notes: data.notes || null } : {}), ...(data.contactedAt !== undefined ? { contacted_at: data.contactedAt ? new Date(data.contactedAt) : null } : {}) } })); }
