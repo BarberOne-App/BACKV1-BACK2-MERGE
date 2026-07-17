@@ -834,8 +834,10 @@ export async function createAppointmentService(params: {
     return newStart < existEnd && newEnd > existStart;
   });
 
-  if (!isFitAppointment && hasConflict) {
-    throw badRequest("Conflito de horário — barbeiro já possui agendamento neste período");
+  if (hasConflict) {
+    throw badRequest(
+      "Conflito de horário — barbeiro já possui agendamento neste período"
+    );
   }
 
   const existingForClient = await getClientAppointmentsForDate({
@@ -849,14 +851,58 @@ export async function createAppointmentService(params: {
     const existStart = new Date(appt.start_at).getTime();
     const existEnd = new Date(appt.end_at).getTime();
 
-    if (Number.isNaN(existStart) || Number.isNaN(existEnd)) return false;
+    if (Number.isNaN(existStart) || Number.isNaN(existEnd)) {
+      return false;
+    }
 
     return startAt.getTime() < existEnd && endAt.getTime() > existStart;
   });
 
-  if (!isFitAppointment && clientHasConflict) {
-    throw badRequest("Cliente/dependente já possui agendamento neste horário");
+  if (clientHasConflict) {
+    throw badRequest(
+      "Cliente/dependente já possui agendamento neste horário"
+    );
   }
+
+  // const existing = await getBarberAppointmentsForDate(
+  //   params.barbershopId,
+  //   barberId,
+  //   date,
+  // );
+
+  // const hasConflict = existing.some((appt: any) => {
+  //   const existStart = new Date(appt.start_at).getTime();
+  //   const existEnd = new Date(appt.end_at).getTime();
+
+  //   const newStart = startAt.getTime();
+  //   const newEnd = endAt.getTime();
+
+  //   return newStart < existEnd && newEnd > existStart;
+  // });
+
+  // if (!isFitAppointment && hasConflict) {
+  //   throw badRequest("Conflito de horário — barbeiro já possui agendamento neste período");
+  // }
+
+  // const existingForClient = await getClientAppointmentsForDate({
+  //   barbershopId: params.barbershopId,
+  //   clientId,
+  //   dependentId: dependentId ?? null,
+  //   date,
+  // });
+
+  // const clientHasConflict = existingForClient.some((appt: any) => {
+  //   const existStart = new Date(appt.start_at).getTime();
+  //   const existEnd = new Date(appt.end_at).getTime();
+
+  //   if (Number.isNaN(existStart) || Number.isNaN(existEnd)) return false;
+
+  //   return startAt.getTime() < existEnd && endAt.getTime() > existStart;
+  // });
+
+  // if (!isFitAppointment && clientHasConflict) {
+  //   throw badRequest("Cliente/dependente já possui agendamento neste horário");
+  // }
 
   const hasActiveSubscription = activeSubscriptionForAppointment && (
     activeSubscriptionForAppointment.status === "active" ||
@@ -1154,7 +1200,7 @@ export async function updateAppointmentService(params: {
         params.appointmentId,
         'paid',
         new Date(),
-      ).catch(() => {});
+      ).catch(() => { });
     } else if (newStatus === 'cancelled' || newStatus === 'canceled' || newStatus === 'no_show') {
       // Agendamento cancelado/no-show → pagamento falhou
       syncPaymentStatusByAppointment(
@@ -1162,7 +1208,7 @@ export async function updateAppointmentService(params: {
         params.appointmentId,
         'failed',
         null,
-      ).catch(() => {});
+      ).catch(() => { });
     }
   }
 

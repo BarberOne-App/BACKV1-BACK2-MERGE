@@ -161,8 +161,34 @@ async function getGoogleProfile(accessToken: string) {
 }
 const TRIAL_PERIOD_DAYS = Number(process.env.TRIAL_PERIOD_DAYS || 14);
 
+export function normalizeBrazilPhone(
+  value: string | null | undefined
+): string {
+  let phone = String(value || "").replace(/\D/g, "");
+
+  if (phone.startsWith("00")) {
+    phone = phone.substring(2);
+  }
+
+  // Número brasileiro sem código do país
+  if (phone.length === 10 || phone.length === 11) {
+    phone = `55${phone}`;
+  }
+
+  // 55 + DDD + telefone
+  if (phone.length !== 12 && phone.length !== 13) {
+    throw new Error("Telefone brasileiro inválido");
+  }
+
+  if (!phone.startsWith("55")) {
+    throw new Error("O telefone deve ser brasileiro");
+  }
+
+  return phone;
+}
+
 function normalizePhoneNumber(value: string | null | undefined) {
-  return String(value || "").replace(/\D/g, "");
+  return normalizeBrazilPhone(value);
 }
 
 async function assertUniqueUserPhone(phone?: string | null, excludeUserId?: string | null) {
@@ -627,7 +653,24 @@ export async function verifyWhatsAppLoginOtpService(params: { requestId: string;
     throw unauthorized("Limite de tentativas excedido");
   }
 
-  if (hashOtpCode(code) !== otp.code_hash) {
+  function validateOtpHash(code: string, storedHash: string) {
+    const receivedHash = hashOtpCode(code);
+
+    const receivedBuffer = Buffer.from(receivedHash, "hex");
+    const storedBuffer = Buffer.from(storedHash, "hex");
+
+    if (receivedBuffer.length !== storedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(
+      receivedBuffer,
+      storedBuffer
+    );
+  }
+
+  // if (hashOtpCode(code) !== otp.code_hash) {
+  if (!validateOtpHash(code, otp.code_hash)) {
     const attempts = otp.attempts + 1;
     await prismaAny.whatsapp_login_otps.update({
       where: { id: otp.id },
