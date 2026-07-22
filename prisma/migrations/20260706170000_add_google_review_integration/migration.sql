@@ -1,0 +1,2 @@
+-- No-op migration retained to preserve the migration history.
+-- The Google Maps URL column was added by the immediately preceding migration.

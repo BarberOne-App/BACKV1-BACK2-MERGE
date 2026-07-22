@@ -1,0 +1,2 @@
+-- Migration already recorded in the homologation database.
+-- Kept locally as a no-op to preserve the shared migration history.
