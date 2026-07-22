@@ -834,7 +834,7 @@ export async function createAppointmentService(params: {
     return newStart < existEnd && newEnd > existStart;
   });
 
-  if (hasConflict) {
+  if (!isFitAppointment && hasConflict) {
     throw badRequest("Conflito de horário — barbeiro já possui agendamento neste período");
   }
 
@@ -883,6 +883,7 @@ export async function createAppointmentService(params: {
     notes: params.data.notes,
     lastModifiedBy: params.actorId ?? null,
     lastActionDescription: `Agendado por ${await resolveActorDisplayName(params.barbershopId, params.actorRole, params.actorId)}`,
+    allowsBarberOverlap: isFitAppointment,
     status: appointmentStatus,
     services: normalizedServices,
     products: (products ?? []).map((product) => ({

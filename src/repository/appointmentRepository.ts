@@ -178,6 +178,7 @@ export async function createAppointmentTx(data: {
   notes?: string | null;
   lastModifiedBy?: string | null;
   lastActionDescription?: string | null;
+  allowsBarberOverlap?: boolean;
   status?: string;
   services: {
     serviceId: string;
@@ -206,6 +207,7 @@ export async function createAppointmentTx(data: {
         notes: data.notes ?? null,
         last_modified_by: data.lastModifiedBy ?? null,
         last_action_description: data.lastActionDescription ?? null,
+        allows_barber_overlap: data.allowsBarberOverlap ?? false,
         status: (data.status as any) ?? "scheduled",
         appointment_services: {
           create: data.services.map((s) => ({

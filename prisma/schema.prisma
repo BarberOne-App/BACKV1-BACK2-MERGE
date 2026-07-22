@@ -70,6 +70,7 @@ model appointments {
   dependent_id            String?                @db.Uuid
   last_modified_by        String?
   last_action_description String?
+  allows_barber_overlap   Boolean                @default(false)
   appointment_products    appointment_products[]
   appointment_services    appointment_services[]
   barbers                 barbers                @relation(fields: [barber_id], references: [id], onUpdate: NoAction)
