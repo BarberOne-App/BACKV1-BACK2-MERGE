@@ -72,10 +72,10 @@ const appointmentSelect = {
   },
 } satisfies Prisma.appointmentsSelect;
 
-function getUtcDayRange(date: string) {
+function getSaoPauloDayRange(date: string) {
   return {
-    dayStart: new Date(`${date}T00:00:00Z`),
-    dayEnd: new Date(`${date}T23:59:59Z`),
+    dayStart: new Date(`${date}T00:00:00-03:00`),
+    dayEnd: new Date(`${date}T24:00:00-03:00`),
   };
 }
 
@@ -285,13 +285,14 @@ export async function getBarberAppointmentsForDate(
   barberId: string,
   date: string
 ) {
-  const { dayStart, dayEnd } = getUtcDayRange(date);
+  const { dayStart, dayEnd } = getSaoPauloDayRange(date);
 
   return prisma.appointments.findMany({
     where: {
       barbershop_id: barbershopId,
       barber_id: barberId,
-      start_at: { gte: dayStart, lte: dayEnd },
+      start_at: { lt: dayEnd },
+      end_at: { gt: dayStart },
       status: { notIn: ["cancelled", "no_show"] },
     },
     select: {
@@ -309,7 +310,7 @@ export async function getClientAppointmentsForDate(params: {
   date: string;
   dependentId?: string | null;
 }) {
-  const { dayStart, dayEnd } = getUtcDayRange(params.date);
+  const { dayStart, dayEnd } = getSaoPauloDayRange(params.date);
 
   const ownerWhere: Prisma.appointmentsWhereInput = params.dependentId
     ? {
@@ -323,7 +324,8 @@ export async function getClientAppointmentsForDate(params: {
   return prisma.appointments.findMany({
     where: {
       barbershop_id: params.barbershopId,
-      start_at: { gte: dayStart, lte: dayEnd },
+      start_at: { lt: dayEnd },
+      end_at: { gt: dayStart },
       status: { notIn: ["cancelled", "no_show"] },
       ...ownerWhere,
     },

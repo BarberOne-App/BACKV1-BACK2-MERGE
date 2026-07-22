@@ -834,7 +834,7 @@ export async function createAppointmentService(params: {
     return newStart < existEnd && newEnd > existStart;
   });
 
-  if (!isFitAppointment && hasConflict) {
+  if (hasConflict) {
     throw badRequest("Conflito de horário — barbeiro já possui agendamento neste período");
   }
 
@@ -854,7 +854,7 @@ export async function createAppointmentService(params: {
     return startAt.getTime() < existEnd && endAt.getTime() > existStart;
   });
 
-  if (!isFitAppointment && clientHasConflict) {
+  if (clientHasConflict) {
     throw badRequest("Cliente/dependente já possui agendamento neste horário");
   }
 

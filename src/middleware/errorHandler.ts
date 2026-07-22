@@ -56,6 +56,20 @@ export function errorHandler(err: any, _req: Request, res: Response, _next: Next
   // erros conhecidos do Prisma (ex: unique)
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === "P2002") return res.status(409).send(["Dados já cadastrados (unique)"]);
+
+    const databaseError = String(err.meta?.database_error ?? err.message ?? "");
+    const isAppointmentOverlap =
+      err.code === "P2004" &&
+      (databaseError.includes("23P01") ||
+        databaseError.includes("appointments_no_barber_overlap") ||
+        databaseError.includes("appointments_no_client_overlap") ||
+        databaseError.includes("appointments_no_dependent_overlap"));
+
+    if (isAppointmentOverlap) {
+      return res.status(409).send([
+        "Este horário já está ocupado para o barbeiro, cliente ou dependente",
+      ]);
+    }
   }
 
   // Erro da API do Pagar.me ou outro serviço com status numérico
